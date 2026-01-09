@@ -107,11 +107,11 @@ jobs:
 
           sed -i "s/version \".*\"/version \"${VERSION}\"/" Formula/shelp.rb
 
-          # Update SHA256 checksums for each platform
-          sed -i "0,/sha256 \".*\"/s//sha256 \"${SHA_DARWIN_AMD64}\"/" Formula/shelp.rb
-          sed -i "0,/sha256 \".*\"/s//sha256 \"${SHA_DARWIN_ARM64}\"/" Formula/shelp.rb
-          sed -i "0,/sha256 \".*\"/s//sha256 \"${SHA_LINUX_AMD64}\"/" Formula/shelp.rb
-          sed -i "0,/sha256 \".*\"/s//sha256 \"${SHA_LINUX_ARM64}\"/" Formula/shelp.rb
+          # Update SHA256 checksums by matching the URL pattern on previous line
+          sed -i "/darwin-amd64/{n;s/sha256 \".*\"/sha256 \"${SHA_DARWIN_AMD64}\"/}" Formula/shelp.rb
+          sed -i "/darwin-arm64/{n;s/sha256 \".*\"/sha256 \"${SHA_DARWIN_ARM64}\"/}" Formula/shelp.rb
+          sed -i "/linux-amd64/{n;s/sha256 \".*\"/sha256 \"${SHA_LINUX_AMD64}\"/}" Formula/shelp.rb
+          sed -i "/linux-arm64/{n;s/sha256 \".*\"/sha256 \"${SHA_LINUX_ARM64}\"/}" Formula/shelp.rb
 
       - name: Commit and push
         env:
