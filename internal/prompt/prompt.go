@@ -6,10 +6,10 @@ import (
 )
 
 const (
-	IconSuccess = "✓"
-	IconError   = "✗"
-	IconWarning = "!"
-	IconInfo    = "›"
+	IconSuccess = "●"
+	IconError   = "●"
+	IconWarning = "●"
+	IconInfo    = "●"
 	IconArrow   = "→"
 )
 

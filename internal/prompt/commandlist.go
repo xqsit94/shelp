@@ -138,7 +138,7 @@ func (m commandListModel) View() string {
 	for i, item := range m.commands {
 		cursor := "  "
 		if m.cursor == i {
-			cursor = cursorStyle.Render("› ")
+			cursor = cursorStyle.Render("> ")
 		}
 
 		checkbox := checkboxUncheckedStyle.Render("○")

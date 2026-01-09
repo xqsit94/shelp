@@ -87,12 +87,12 @@ func AssessRisk(command string) RiskLevel {
 func GetRiskEmoji(risk RiskLevel) string {
 	switch risk {
 	case RiskSafe:
-		return "✅"
+		return "●"
 	case RiskCaution:
-		return "⚠️"
+		return "▲"
 	case RiskDanger:
-		return "🚫"
+		return "✕"
 	default:
-		return "❓"
+		return "○"
 	}
 }
