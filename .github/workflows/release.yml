@@ -89,10 +89,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout homebrew-shelp
         uses: actions/checkout@v4
         with:
-          ref: main
+          repository: xqsit94/homebrew-shelp
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       - name: Update Homebrew formula
         env:
