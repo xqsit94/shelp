@@ -5,6 +5,14 @@ import (
 	"strings"
 )
 
+const (
+	IconSuccess = "✓"
+	IconError   = "✗"
+	IconWarning = "!"
+	IconInfo    = "›"
+	IconArrow   = "→"
+)
+
 func DisplayOutput(output string, isError bool) {
 	if output == "" {
 		return
@@ -24,17 +32,17 @@ func DisplayOutput(output string, isError bool) {
 }
 
 func DisplaySuccess(message string) {
-	fmt.Println(successStyle.Render("  " + message))
+	fmt.Println(successStyle.Render("  " + IconSuccess + " " + message))
 }
 
 func DisplayError(message string) {
-	fmt.Println(dangerStyle.Render("  " + message))
+	fmt.Println(dangerStyle.Render("  " + IconError + " " + message))
 }
 
 func DisplayWarning(message string) {
-	fmt.Println(warningStyle.Render("  " + message))
+	fmt.Println(warningStyle.Render("  " + IconWarning + " " + message))
 }
 
 func DisplayInfo(message string) {
-	fmt.Println(infoStyle.Render("  " + message))
+	fmt.Println(infoStyle.Render("  " + IconInfo + " " + message))
 }

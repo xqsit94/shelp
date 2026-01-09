@@ -2,11 +2,27 @@ package prompt
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
+
+var ShelpSpinner = spinner.Spinner{
+	Frames: []string{
+		"▰▱▱▱▱",
+		"▰▰▱▱▱",
+		"▰▰▰▱▱",
+		"▰▰▰▰▱",
+		"▰▰▰▰▰",
+		"▱▰▰▰▰",
+		"▱▱▰▰▰",
+		"▱▱▱▰▰",
+		"▱▱▱▱▰",
+		"▱▱▱▱▱",
+	},
+	FPS: time.Second / 12,
+}
 
 type spinnerModel struct {
 	spinner  spinner.Model
@@ -16,8 +32,8 @@ type spinnerModel struct {
 
 func newSpinnerModel(message string) spinnerModel {
 	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(colorCyanLg)
+	s.Spinner = ShelpSpinner
+	s.Style = spinnerStyle
 	return spinnerModel{
 		spinner: s,
 		message: message,

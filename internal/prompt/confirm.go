@@ -85,14 +85,17 @@ func (m confirmModel) View() string {
 	s += "\n"
 	s += fmt.Sprintf("Risk: %s %s\n\n", riskEmoji, riskStyle.Render(string(m.risk)))
 
+	choiceIcons := []string{"▶", "↻", "×"}
 	for i, choice := range m.choices {
 		cursor := "  "
 		style := unselectedStyle
+		icon := hintStyle.Render(choiceIcons[i])
 		if m.cursor == i {
-			cursor = cursorStyle.Render("> ")
+			cursor = cursorStyle.Render("› ")
 			style = selectedStyle
+			icon = cursorStyle.Render(choiceIcons[i])
 		}
-		s += cursor + style.Render(choice) + "\n"
+		s += cursor + icon + " " + style.Render(choice) + "\n"
 	}
 
 	s += "\n" + helpStyle.Render("↑/↓: navigate • enter: select • y: execute • r: regenerate • q: cancel")

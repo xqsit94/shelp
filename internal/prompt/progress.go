@@ -5,7 +5,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type executionModel struct {
@@ -17,8 +16,8 @@ type executionModel struct {
 
 func newExecutionModel(command, message string) executionModel {
 	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(colorCyanLg)
+	s.Spinner = ShelpSpinner
+	s.Style = spinnerStyle
 	return executionModel{
 		spinner: s,
 		message: message,
@@ -62,7 +61,7 @@ func (m executionModel) View() string {
 	return fmt.Sprintf("\n%s %s\n%s\n",
 		m.spinner.View(),
 		infoStyle.Render(m.message),
-		lipgloss.NewStyle().Foreground(colorGray).Render("  "+cmdPreview),
+		commandPreviewStyle.Render("  "+cmdPreview),
 	)
 }
 
@@ -98,8 +97,8 @@ type batchProgressModel struct {
 
 func newBatchProgressModel(current, total int, command string) batchProgressModel {
 	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(colorCyanLg)
+	s.Spinner = ShelpSpinner
+	s.Style = spinnerStyle
 	return batchProgressModel{
 		spinner: s,
 		current: current,
@@ -146,7 +145,7 @@ func (m batchProgressModel) View() string {
 	return fmt.Sprintf("\n%s %s\n%s\n",
 		m.spinner.View(),
 		infoStyle.Render(progressText),
-		lipgloss.NewStyle().Foreground(colorGray).Render("  "+cmdPreview),
+		commandPreviewStyle.Render("  "+cmdPreview),
 	)
 }
 

@@ -141,13 +141,11 @@ func (m setupModel) View() string {
 
 	var b strings.Builder
 
-	welcomeTitle := lipgloss.NewStyle().
-		Foreground(colorPurple).
-		Bold(true).
+	welcomeTitle := titleBoldStyle.
+		Foreground(colorPrimary).
 		Render("Welcome to shelp!")
 
-	welcomeSubtitle := lipgloss.NewStyle().
-		Foreground(colorDimWhite).
+	welcomeSubtitle := hintStyle.
 		Render("Let's set up your AI provider.")
 
 	stepText := fmt.Sprintf("Step %d of %d", m.step, m.totalSteps)
@@ -167,12 +165,12 @@ func (m setupModel) View() string {
 	b.WriteString("\n" + headerBox + "\n\n")
 
 	for i, input := range m.inputs {
-		labelStyle := lipgloss.NewStyle().Foreground(colorDimWhite)
+		lblStyle := hintStyle
 		if i == m.focusIndex {
-			labelStyle = labelStyle.Foreground(colorCyanLg).Bold(true)
+			lblStyle = infoStyle.Bold(true)
 		}
 
-		b.WriteString("  " + labelStyle.Render(m.labels[i]+":") + "\n")
+		b.WriteString("  " + lblStyle.Render(m.labels[i]+":") + "\n")
 
 		inputBox := inputStyle
 		if i == m.focusIndex {
@@ -187,15 +185,15 @@ func (m setupModel) View() string {
 }
 
 func (m setupModel) renderProgressBar() string {
-	width := 30
+	width := 20
 	filled := width * m.step / m.totalSteps
 
 	var bar strings.Builder
 	for i := 0; i < width; i++ {
 		if i < filled {
-			bar.WriteString(progressBarStyle.Render("━"))
+			bar.WriteString(progressBarStyle.Render("▰"))
 		} else {
-			bar.WriteString(progressEmptyStyle.Render("░"))
+			bar.WriteString(progressEmptyStyle.Render("▱"))
 		}
 	}
 

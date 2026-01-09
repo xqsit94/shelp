@@ -90,18 +90,17 @@ func (m outputModel) View() string {
 	var contentStyle lipgloss.Style
 
 	if m.isError {
-		titleColor = colorRed
+		titleColor = colorDanger
 		contentStyle = errorTextStyle
 		m.title = "Error"
 	} else {
-		titleColor = colorGray
+		titleColor = colorBorder
 		contentStyle = outputTextStyle
 		m.title = "Output"
 	}
 
-	titleRendered := lipgloss.NewStyle().
+	titleRendered := titleBoldStyle.
 		Foreground(titleColor).
-		Bold(true).
 		Render(m.title)
 
 	content := contentStyle.Render(m.viewport.View())
@@ -109,15 +108,11 @@ func (m outputModel) View() string {
 	scrollInfo := ""
 	if m.viewport.TotalLineCount() > m.viewport.Height {
 		percent := m.viewport.ScrollPercent() * 100
-		scrollInfo = lipgloss.NewStyle().
-			Foreground(colorGray).
-			Render(fmt.Sprintf(" (%.0f%%)", percent))
+		scrollInfo = hintStyle.Render(fmt.Sprintf(" (%.0f%%)", percent))
 	}
 
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+	box := boxBase.
 		BorderForeground(titleColor).
-		Padding(0, 1).
 		Render(content)
 
 	help := helpStyle.Render("↑/↓: scroll • q/enter: close")

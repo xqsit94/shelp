@@ -156,47 +156,28 @@ func configShowCmd() *cobra.Command {
 }
 
 func displayConfigTable(aiURL, apiKey, model string) {
-	purple := lipgloss.Color("#874BFD")
-	gray := lipgloss.Color("#666666")
-	white := lipgloss.Color("#FFFFFF")
-	dimWhite := lipgloss.Color("#AAAAAA")
-
-	headerStyle := lipgloss.NewStyle().
-		Foreground(purple).
-		Bold(true).
-		Padding(0, 1)
-
-	cellStyle := lipgloss.NewStyle().
-		Padding(0, 1)
-
-	labelStyle := cellStyle.Foreground(dimWhite)
-	valueStyle := cellStyle.Foreground(white)
-
 	t := table.New().
 		Border(lipgloss.RoundedBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(gray)).
+		BorderStyle(prompt.TableBorderStyle).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if col == 0 {
-				return labelStyle
+				return prompt.TableLabelStyle
 			}
-			return valueStyle
+			return prompt.TableValueStyle
 		}).
 		Headers("Setting", "Value").
 		Row("AI URL", aiURL).
 		Row("API Key", apiKey).
 		Row("Model", model)
 
-	title := lipgloss.NewStyle().
-		Foreground(purple).
-		Bold(true).
+	title := prompt.TitleBoldStyle.
+		Foreground(prompt.ColorPrimary).
 		Render("Configuration")
 
 	fmt.Println()
 	fmt.Println(title)
 	fmt.Println(t)
 	fmt.Println()
-
-	_ = headerStyle
 }
 
 func configResetCmd() *cobra.Command {

@@ -6,7 +6,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/xqsit94/shelp/internal/safety"
 )
 
@@ -131,25 +130,23 @@ func (m commandListModel) View() string {
 	var b strings.Builder
 
 	title := fmt.Sprintf("Generated Commands (%d)", len(m.commands))
-	titleStyle := lipgloss.NewStyle().
-		Foreground(colorCyanLg).
-		Bold(true)
+	cmdTitleStyle := titleBoldStyle.Foreground(colorInfo)
 
-	b.WriteString("\n" + titleStyle.Render(title) + "\n")
+	b.WriteString("\n" + cmdTitleStyle.Render(title) + "\n")
 
 	var content strings.Builder
 	for i, item := range m.commands {
 		cursor := "  "
 		if m.cursor == i {
-			cursor = cursorStyle.Render("> ")
+			cursor = cursorStyle.Render("› ")
 		}
 
-		checkbox := checkboxUncheckedStyle.Render("[ ]")
+		checkbox := checkboxUncheckedStyle.Render("○")
 		if item.Selected {
-			checkbox = checkboxCheckedStyle.Render("[x]")
+			checkbox = checkboxCheckedStyle.Render("●")
 		}
 		if safety.IsBlocked(item.Command) {
-			checkbox = dangerStyle.Render("[!]")
+			checkbox = dangerStyle.Render("⊘")
 		}
 
 		riskEmoji := safety.GetRiskEmoji(item.Risk)
@@ -170,10 +167,7 @@ func (m commandListModel) View() string {
 		content.WriteString(line + "\n")
 	}
 
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorCyanLg).
-		Padding(0, 1).
+	box := commandBoxStyle.
 		Width(GetTerminalWidth() - 2).
 		Render(content.String())
 
@@ -186,8 +180,7 @@ func (m commandListModel) View() string {
 		}
 	}
 
-	statusStyle := lipgloss.NewStyle().Foreground(colorDimWhite)
-	b.WriteString(statusStyle.Render(fmt.Sprintf("  %d of %d selected\n\n", selectedCount, len(m.commands))))
+	b.WriteString(hintStyle.Render(fmt.Sprintf("  %d of %d selected\n\n", selectedCount, len(m.commands))))
 
 	b.WriteString(helpStyle.Render("  ↑/↓: navigate • space: toggle • a: all • n: none • r: regenerate • enter: execute • q: quit"))
 
@@ -197,22 +190,18 @@ func (m commandListModel) View() string {
 func (m commandListModel) viewRegenerateMode() string {
 	var b strings.Builder
 
-	titleStyle := lipgloss.NewStyle().
-		Foreground(colorPurple).
-		Bold(true)
+	regenTitleStyle := titleBoldStyle.Foreground(colorPrimary)
 
-	b.WriteString("\n" + titleStyle.Render("Refine your request") + "\n")
+	b.WriteString("\n" + regenTitleStyle.Render("Refine your request") + "\n")
 
 	queryPreview := m.originalQuery
 	if len(queryPreview) > 60 {
 		queryPreview = queryPreview[:57] + "..."
 	}
 
-	originalStyle := lipgloss.NewStyle().Foreground(colorDimWhite)
-	b.WriteString(originalStyle.Render(fmt.Sprintf("  Original: \"%s\"\n\n", queryPreview)))
+	b.WriteString(hintStyle.Render(fmt.Sprintf("  Original: \"%s\"\n\n", queryPreview)))
 
-	labelStyle := lipgloss.NewStyle().Foreground(colorCyanLg)
-	b.WriteString(labelStyle.Render("  Add to your request (or press Enter to retry):\n"))
+	b.WriteString(infoStyle.Render("  Add to your request (or press Enter to retry):\n"))
 	b.WriteString("  " + m.textInput.View() + "\n\n")
 
 	b.WriteString(helpStyle.Render("  enter: regenerate • esc: cancel"))
