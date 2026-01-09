@@ -152,15 +152,10 @@ func (m commandListModel) View() string {
 		riskEmoji := safety.GetRiskEmoji(item.Risk)
 		riskStyle := getRiskStyle(string(item.Risk))
 
-		cmdStyle := commandTextStyle
-		if m.cursor == i {
-			cmdStyle = cmdStyle.Bold(true)
-		}
-
 		line := fmt.Sprintf("%s%s %s  %s %s",
 			cursor,
 			checkbox,
-			cmdStyle.Render(item.Command),
+			HighlightCommand(item.Command),
 			riskEmoji,
 			riskStyle.Render(string(item.Risk)),
 		)

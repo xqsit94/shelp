@@ -234,7 +234,7 @@ func RenderTitledBox(title, content string, borderColor lipgloss.Color) string {
 }
 
 func RenderCommandBox(title, command string) string {
-	return RenderTitledBox(title, commandTextStyle.Render(command), colorInfo)
+	return RenderTitledBox(title, HighlightCommand(command), colorInfo)
 }
 
 func RenderOutputBox(content string) string {
