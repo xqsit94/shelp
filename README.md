@@ -19,6 +19,17 @@ brew tap xqsit94/shelp
 brew install shelp
 ```
 
+**Update:**
+```bash
+brew update && brew upgrade shelp
+```
+
+**Uninstall:**
+```bash
+brew uninstall shelp
+brew untap xqsit94/shelp
+```
+
 ### Quick Install
 
 ```bash
