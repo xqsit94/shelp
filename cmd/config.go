@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/spf13/cobra"
 	"github.com/xqsit94/shelp/internal/config"
 	"github.com/xqsit94/shelp/internal/prompt"
@@ -129,33 +131,72 @@ func configShowCmd() *cobra.Command {
 
 			if !cfg.IsConfigured() {
 				prompt.DisplayWarning("Configuration is incomplete")
-				fmt.Println()
 			}
 
-			fmt.Println("Current Configuration:")
-			fmt.Println("─────────────────────────────────────────")
-
-			if cfg.AIURL != "" {
-				fmt.Printf("AI URL:  %s\n", cfg.AIURL)
-			} else {
-				fmt.Printf("AI URL:  %s(not set)%s\n", "\033[2m", "\033[0m")
+			aiURL := cfg.AIURL
+			if aiURL == "" {
+				aiURL = "(not set)"
 			}
 
-			if cfg.APIKey != "" {
-				fmt.Printf("API Key: %s\n", cfg.MaskedAPIKey())
-			} else {
-				fmt.Printf("API Key: %s(not set)%s\n", "\033[2m", "\033[0m")
+			apiKey := cfg.MaskedAPIKey()
+			if cfg.APIKey == "" {
+				apiKey = "(not set)"
 			}
 
-			if cfg.Model != "" {
-				fmt.Printf("Model:   %s\n", cfg.Model)
-			} else {
-				fmt.Printf("Model:   %s(not set)%s\n", "\033[2m", "\033[0m")
+			model := cfg.Model
+			if model == "" {
+				model = "(not set)"
 			}
+
+			displayConfigTable(aiURL, apiKey, model)
 
 			return nil
 		},
 	}
+}
+
+func displayConfigTable(aiURL, apiKey, model string) {
+	purple := lipgloss.Color("#874BFD")
+	gray := lipgloss.Color("#666666")
+	white := lipgloss.Color("#FFFFFF")
+	dimWhite := lipgloss.Color("#AAAAAA")
+
+	headerStyle := lipgloss.NewStyle().
+		Foreground(purple).
+		Bold(true).
+		Padding(0, 1)
+
+	cellStyle := lipgloss.NewStyle().
+		Padding(0, 1)
+
+	labelStyle := cellStyle.Foreground(dimWhite)
+	valueStyle := cellStyle.Foreground(white)
+
+	t := table.New().
+		Border(lipgloss.RoundedBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(gray)).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if col == 0 {
+				return labelStyle
+			}
+			return valueStyle
+		}).
+		Headers("Setting", "Value").
+		Row("AI URL", aiURL).
+		Row("API Key", apiKey).
+		Row("Model", model)
+
+	title := lipgloss.NewStyle().
+		Foreground(purple).
+		Bold(true).
+		Render("Configuration")
+
+	fmt.Println()
+	fmt.Println(title)
+	fmt.Println(t)
+	fmt.Println()
+
+	_ = headerStyle
 }
 
 func configResetCmd() *cobra.Command {
@@ -164,8 +205,8 @@ func configResetCmd() *cobra.Command {
 		Short: "Reset all configuration",
 		Long:  "Remove all stored configuration settings",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !prompt.ConfirmYesNo("Are you sure you want to reset all configuration? (y/n): ") {
-				fmt.Println("Reset cancelled.")
+			if !prompt.ConfirmYesNoInteractive("Are you sure you want to reset all configuration?") {
+				prompt.DisplayWarning("Reset cancelled.")
 				return nil
 			}
 

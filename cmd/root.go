@@ -55,104 +55,125 @@ func runQuery(query string) error {
 	}
 
 	shell := executor.DetectShell()
-	fmt.Printf("🔍 Generating commands for: %s\n", query)
-	fmt.Printf("🐚 Detected shell: %s\n", shell)
-
 	client := ai.NewClient(cfg.AIURL, cfg.APIKey, cfg.Model)
-	commands, err := client.GenerateCommands(query, shell)
-	if err != nil {
-		prompt.DisplayError(fmt.Sprintf("Failed to generate commands: %v", err))
-		return nil
-	}
 
-	if len(commands) == 0 {
-		prompt.DisplayWarning("No commands generated. The request may be unclear or potentially unsafe.")
-		return nil
-	}
+	currentQuery := query
 
-	return executeCommands(commands, shell)
+	for {
+		spinner := prompt.NewSpinner("Generating commands...")
+		spinner.Start()
+
+		commands, err := client.GenerateCommands(currentQuery, shell)
+
+		spinner.Stop()
+
+		if err != nil {
+			prompt.DisplayError(fmt.Sprintf("Failed to generate commands: %v", err))
+			return nil
+		}
+
+		if len(commands) == 0 {
+			prompt.DisplayWarning("No commands generated. The request may be unclear or potentially unsafe.")
+			return nil
+		}
+
+		result := prompt.SelectCommands(commands, currentQuery)
+
+		if result.Cancelled {
+			prompt.DisplayWarning("Execution cancelled.")
+			return nil
+		}
+
+		if result.Regenerate {
+			currentQuery = result.NewQuery
+			continue
+		}
+
+		return executeSelectedCommands(result.SelectedCommands, shell)
+	}
 }
 
 func runFirstTimeSetup(cfg *config.Config) error {
-	fmt.Println("🚀 Welcome to shelp! Let's set up your AI provider.\n")
+	result := prompt.RunSetupWizard()
 
-	aiURL := prompt.PromptInput("Enter AI API URL (e.g., https://openrouter.ai/api/v1/chat/completions): ")
-	if aiURL == "" {
+	if result.Cancelled {
+		return fmt.Errorf("setup cancelled")
+	}
+
+	if result.AIURL == "" {
 		return fmt.Errorf("AI URL is required")
 	}
-	cfg.AIURL = aiURL
+	cfg.AIURL = result.AIURL
 
-	apiKey, err := config.PromptForAPIKey()
-	if err != nil {
-		return err
-	}
-	if apiKey == "" {
+	if result.APIKey == "" {
 		return fmt.Errorf("API key is required")
 	}
-	cfg.APIKey = apiKey
+	cfg.APIKey = result.APIKey
 
-	model := prompt.PromptInput("Enter model name (e.g., anthropic/claude-3.5-sonnet): ")
-	if model == "" {
+	if result.Model == "" {
 		return fmt.Errorf("model name is required")
 	}
-	cfg.Model = model
+	cfg.Model = result.Model
 
 	if err := config.Save(cfg); err != nil {
 		return fmt.Errorf("failed to save configuration: %v", err)
 	}
 
+	fmt.Println()
 	prompt.DisplaySuccess("Configuration saved!")
 	fmt.Println()
 
 	return nil
 }
 
-func executeCommands(commands []string, shell string) error {
+func executeSelectedCommands(commands []string, shell string) error {
+	if len(commands) == 0 {
+		prompt.DisplayWarning("No commands selected.")
+		return nil
+	}
+
 	total := len(commands)
 
 	for i, cmd := range commands {
-		prompt.DisplayCommand(cmd, i+1, total)
+		progress := prompt.NewBatchExecutionProgress(i+1, total, cmd)
+		progress.Start()
 
-		if !prompt.ConfirmExecution(cmd) {
-			if i < total-1 {
-				if !prompt.ConfirmYesNo("Skip to next command? (y/n): ") {
-					fmt.Println("Execution cancelled.")
-					return nil
-				}
-				continue
-			}
-			fmt.Println("Execution cancelled.")
-			return nil
+		execResult, err := executor.Execute(cmd, shell)
+
+		progress.Stop()
+
+		cmdPreview := cmd
+		if len(cmdPreview) > 50 {
+			cmdPreview = cmdPreview[:47] + "..."
 		}
 
-		fmt.Println("\n⏳ Executing...")
-
-		result, err := executor.Execute(cmd, shell)
 		if err != nil {
-			prompt.DisplayError(fmt.Sprintf("Execution failed: %v", err))
+			prompt.DisplayError(fmt.Sprintf("[%d/%d] %s", i+1, total, cmdPreview))
+			prompt.DisplayError(fmt.Sprintf("  Failed: %v", err))
 			if i < total-1 {
-				if !prompt.ConfirmYesNo("Continue with next command? (y/n): ") {
+				if !prompt.ConfirmYesNoInteractive("Continue with next command?") {
 					return nil
 				}
 			}
 			continue
 		}
 
-		if result.Output != "" {
-			fmt.Println("\n📤 Output:")
-			prompt.DisplayOutput(result.Output, false)
+		if execResult.Output != "" {
+			fmt.Println()
+			prompt.DisplayOutputInteractive(execResult.Output, false)
 		}
 
-		if result.Error != "" {
-			fmt.Println("\n⚠️  Stderr:")
-			prompt.DisplayOutput(result.Error, true)
+		if execResult.Error != "" {
+			fmt.Println()
+			prompt.DisplayOutputInteractive(execResult.Error, true)
 		}
 
-		if result.ExitCode != 0 {
-			prompt.DisplayWarning(fmt.Sprintf("Command exited with code %d", result.ExitCode))
+		if execResult.ExitCode != 0 {
+			prompt.DisplayWarning(fmt.Sprintf("[%d/%d] %s - exited with code %d", i+1, total, cmdPreview, execResult.ExitCode))
 		} else {
-			prompt.DisplaySuccess("Command completed successfully")
+			prompt.DisplaySuccess(fmt.Sprintf("[%d/%d] %s ✓", i+1, total, cmdPreview))
 		}
+		fmt.Println()
 	}
 
 	return nil
