@@ -7,7 +7,7 @@ class Shelp < Formula
   on_macos do
     on_intel do
       url "https://github.com/xqsit94/shelp/releases/download/v#{version}/shelp-darwin-amd64.tar.gz"
-      sha256 "PLACEHOLDER"
+      sha256 "d183fd0cf2c16f6be886bd63095fa3b3ea43a29e61700a1d60cd08c7b5137236"
 
       def install
         bin.install "shelp"
