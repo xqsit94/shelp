@@ -84,32 +84,15 @@ func AssessRisk(command string) RiskLevel {
 	return RiskSafe
 }
 
-func GetRiskColor(risk RiskLevel) string {
-	switch risk {
-	case RiskSafe:
-		return "\033[32m"
-	case RiskCaution:
-		return "\033[33m"
-	case RiskDanger:
-		return "\033[31m"
-	default:
-		return "\033[0m"
-	}
-}
-
 func GetRiskEmoji(risk RiskLevel) string {
 	switch risk {
 	case RiskSafe:
-		return "✅"
+		return "●"
 	case RiskCaution:
-		return "⚠️"
+		return "▲"
 	case RiskDanger:
-		return "🚫"
+		return "✕"
 	default:
-		return "❓"
+		return "○"
 	}
-}
-
-func ResetColor() string {
-	return "\033[0m"
 }

@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/spf13/cobra"
 	"github.com/xqsit94/shelp/internal/config"
 	"github.com/xqsit94/shelp/internal/prompt"
@@ -129,33 +131,53 @@ func configShowCmd() *cobra.Command {
 
 			if !cfg.IsConfigured() {
 				prompt.DisplayWarning("Configuration is incomplete")
-				fmt.Println()
 			}
 
-			fmt.Println("Current Configuration:")
-			fmt.Println("─────────────────────────────────────────")
-
-			if cfg.AIURL != "" {
-				fmt.Printf("AI URL:  %s\n", cfg.AIURL)
-			} else {
-				fmt.Printf("AI URL:  %s(not set)%s\n", "\033[2m", "\033[0m")
+			aiURL := cfg.AIURL
+			if aiURL == "" {
+				aiURL = "(not set)"
 			}
 
-			if cfg.APIKey != "" {
-				fmt.Printf("API Key: %s\n", cfg.MaskedAPIKey())
-			} else {
-				fmt.Printf("API Key: %s(not set)%s\n", "\033[2m", "\033[0m")
+			apiKey := cfg.MaskedAPIKey()
+			if cfg.APIKey == "" {
+				apiKey = "(not set)"
 			}
 
-			if cfg.Model != "" {
-				fmt.Printf("Model:   %s\n", cfg.Model)
-			} else {
-				fmt.Printf("Model:   %s(not set)%s\n", "\033[2m", "\033[0m")
+			model := cfg.Model
+			if model == "" {
+				model = "(not set)"
 			}
+
+			displayConfigTable(aiURL, apiKey, model)
 
 			return nil
 		},
 	}
+}
+
+func displayConfigTable(aiURL, apiKey, model string) {
+	t := table.New().
+		Border(lipgloss.RoundedBorder()).
+		BorderStyle(prompt.TableBorderStyle).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if col == 0 {
+				return prompt.TableLabelStyle
+			}
+			return prompt.TableValueStyle
+		}).
+		Headers("Setting", "Value").
+		Row("AI URL", aiURL).
+		Row("API Key", apiKey).
+		Row("Model", model)
+
+	title := prompt.TitleBoldStyle.
+		Foreground(prompt.ColorPrimary).
+		Render("Configuration")
+
+	fmt.Println()
+	fmt.Println(title)
+	fmt.Println(t)
+	fmt.Println()
 }
 
 func configResetCmd() *cobra.Command {
@@ -164,8 +186,8 @@ func configResetCmd() *cobra.Command {
 		Short: "Reset all configuration",
 		Long:  "Remove all stored configuration settings",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !prompt.ConfirmYesNo("Are you sure you want to reset all configuration? (y/n): ") {
-				fmt.Println("Reset cancelled.")
+			if !prompt.ConfirmYesNoInteractive("Are you sure you want to reset all configuration?") {
+				prompt.DisplayWarning("Reset cancelled.")
 				return nil
 			}
 
