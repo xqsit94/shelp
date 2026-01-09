@@ -12,10 +12,23 @@ Your AI-powered shell assistant. Convert natural language to safe, executable sh
 
 ## Installation
 
+### Homebrew (Recommended)
+
+```bash
+brew tap xqsit94/shelp
+brew install shelp
+```
+
 ### Quick Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xqsit94/shelp/main/install.sh | bash
+```
+
+### Go Install
+
+```bash
+go install github.com/xqsit94/shelp@latest
 ```
 
 ### From Source
@@ -25,12 +38,6 @@ git clone https://github.com/xqsit94/shelp.git
 cd shelp
 go build -o shelp
 mv shelp ~/.local/bin/
-```
-
-### Go Install
-
-```bash
-go install github.com/xqsit94/shelp@latest
 ```
 
 ## Usage
