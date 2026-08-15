@@ -12,7 +12,7 @@ import (
 )
 
 type Config struct {
-	AIURL string `json:"ai_url"`
+	AIURL  string `json:"ai_url"`
 	APIKey string `json:"api_key"`
 	Model  string `json:"model"`
 }
@@ -59,10 +59,15 @@ func (c *Config) IsConfigured() bool {
 }
 
 func (c *Config) MaskedAPIKey() string {
-	if len(c.APIKey) <= 8 {
-		return strings.Repeat("*", len(c.APIKey))
+	n := len(c.APIKey)
+	switch {
+	case n < 8:
+		return strings.Repeat("*", n)
+	case n < 16:
+		return strings.Repeat("*", 4) + c.APIKey[n-4:]
+	default:
+		return c.APIKey[:4] + strings.Repeat("*", n-8) + c.APIKey[n-4:]
 	}
-	return c.APIKey[:4] + strings.Repeat("*", len(c.APIKey)-8) + c.APIKey[len(c.APIKey)-4:]
 }
 
 func PromptForAPIKey() (string, error) {
