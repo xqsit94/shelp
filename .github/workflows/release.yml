@@ -30,14 +30,16 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version-file: go.mod
 
       - name: Build
         env:
+          CGO_ENABLED: 0
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          go build -ldflags="-s -w" -o shelp .
+          VERSION="${GITHUB_REF_NAME#v}"
+          go build -trimpath -ldflags="-s -w -X github.com/xqsit94/shelp/internal/version.Version=${VERSION}" -o shelp .
           tar -czvf shelp-${GOOS}-${GOARCH}.tar.gz shelp
           sha256sum shelp-${GOOS}-${GOARCH}.tar.gz > shelp-${GOOS}-${GOARCH}.tar.gz.sha256
 
