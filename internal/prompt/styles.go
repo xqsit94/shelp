@@ -15,14 +15,13 @@ const (
 
 var (
 	// Primary - Brand violet
-	colorPrimary    = lipgloss.Color("#7C3AED")
-	colorPrimaryDim = lipgloss.Color("#6D28D9")
+	ColorPrimary = lipgloss.Color("#7C3AED")
 
 	// Semantic - Soft, professional
 	colorSuccess = lipgloss.Color("#22C55E")
 	colorWarning = lipgloss.Color("#F59E0B")
 	colorDanger  = lipgloss.Color("#EF4444")
-	colorInfo    = lipgloss.Color("#06B6D4")
+	ColorInfo    = lipgloss.Color("#06B6D4")
 
 	// Neutral - Terminal-friendly
 	colorText      = lipgloss.Color("#F9FAFB")
@@ -31,38 +30,19 @@ var (
 	colorBorder    = lipgloss.Color("#4B5563")
 	colorBorderDim = lipgloss.Color("#374151")
 
-	// Adaptive colors for light/dark terminal support
-	subtleColor    = lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"}
-	highlightColor = lipgloss.AdaptiveColor{Light: "#6D28D9", Dark: "#7C3AED"}
-
 	// Base box style - all boxes inherit from this pattern
 	boxBase = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		Padding(0, 1)
 
-	boxStyle = boxBase.BorderForeground(subtleColor)
-
-	commandBoxStyle = boxBase.BorderForeground(colorInfo)
-
-	outputBoxStyle = boxBase.BorderForeground(colorBorder)
-
-	errorBoxStyle = boxBase.BorderForeground(colorDanger)
-
 	welcomeBoxStyle = boxBase.
-			BorderForeground(colorPrimary).
+			BorderForeground(ColorPrimary).
 			Padding(1, 2)
 
 	// Text styles
-	titleStyle = lipgloss.NewStyle().
-			Foreground(colorTextDim)
-
-	titleBoldStyle = lipgloss.NewStyle().
+	TitleBoldStyle = lipgloss.NewStyle().
 			Foreground(colorText).
 			Bold(true)
-
-	commandTextStyle = lipgloss.NewStyle().
-				Foreground(colorInfo).
-				Bold(true)
 
 	outputTextStyle = lipgloss.NewStyle().
 			Foreground(colorTextDim)
@@ -71,30 +51,17 @@ var (
 			Foreground(colorDanger)
 
 	// Semantic styles
-	successStyle = lipgloss.NewStyle().
+	SuccessStyle = lipgloss.NewStyle().
 			Foreground(colorSuccess)
 
 	warningStyle = lipgloss.NewStyle().
 			Foreground(colorWarning)
 
-	dangerStyle = lipgloss.NewStyle().
+	DangerStyle = lipgloss.NewStyle().
 			Foreground(colorDanger)
 
 	infoStyle = lipgloss.NewStyle().
-			Foreground(colorInfo)
-
-	// Label styles
-	labelStyle = lipgloss.NewStyle().
-			Foreground(colorTextDim).
-			Width(12)
-
-	labelActiveStyle = lipgloss.NewStyle().
-				Foreground(colorInfo).
-				Bold(true).
-				Width(12)
-
-	valueStyle = lipgloss.NewStyle().
-			Foreground(colorText)
+			Foreground(ColorInfo)
 
 	// Risk level styles
 	riskSafeStyle = lipgloss.NewStyle().
@@ -111,14 +78,14 @@ var (
 
 	// Interactive element styles
 	selectedStyle = lipgloss.NewStyle().
-			Foreground(colorInfo).
+			Foreground(ColorInfo).
 			Bold(true)
 
 	unselectedStyle = lipgloss.NewStyle().
 			Foreground(colorTextDim)
 
 	cursorStyle = lipgloss.NewStyle().
-			Foreground(colorPrimary).
+			Foreground(ColorPrimary).
 			Bold(true)
 
 	// Checkbox styles
@@ -141,19 +108,19 @@ var (
 			Foreground(colorTextMuted)
 
 	// Tree connector styles
-	treeConnectorStyle = lipgloss.NewStyle().
-				Foreground(colorBorder)
+	TreeStyle = lipgloss.NewStyle().
+			Foreground(colorBorder)
 
 	treeConnectorActiveStyle = lipgloss.NewStyle().
-					Foreground(colorPrimary).
+					Foreground(ColorPrimary).
 					Bold(true)
 
 	// Progress/Spinner styles
 	spinnerStyle = lipgloss.NewStyle().
-			Foreground(colorPrimary)
+			Foreground(ColorPrimary)
 
 	progressBarStyle = lipgloss.NewStyle().
-				Foreground(colorPrimary)
+				Foreground(ColorPrimary)
 
 	progressEmptyStyle = lipgloss.NewStyle().
 				Foreground(colorBorderDim)
@@ -169,52 +136,24 @@ var (
 
 	inputFocusedStyle = lipgloss.NewStyle().
 				BorderStyle(lipgloss.NormalBorder()).
-				BorderForeground(colorPrimary).
+				BorderForeground(ColorPrimary).
 				Padding(0, 1)
 
 	// Step indicator styles
 	stepIndicatorStyle = lipgloss.NewStyle().
 				Foreground(colorTextDim)
 
-	stepActiveStyle = lipgloss.NewStyle().
-			Foreground(colorPrimary).
-			Bold(true)
-
 	// Table styles (for config display)
-	tableHeaderStyle = lipgloss.NewStyle().
-				Foreground(colorPrimary).
-				Bold(true).
-				Padding(0, 1)
-
-	tableLabelStyle = lipgloss.NewStyle().
+	TableLabelStyle = lipgloss.NewStyle().
 			Foreground(colorTextDim).
 			Padding(0, 1)
 
-	tableValueStyle = lipgloss.NewStyle().
+	TableValueStyle = lipgloss.NewStyle().
 			Foreground(colorText).
 			Padding(0, 1)
 
-	tableBorderStyle = lipgloss.NewStyle().
+	TableBorderStyle = lipgloss.NewStyle().
 				Foreground(colorBorder)
-)
-
-// Exported styles for external packages (cmd)
-var (
-	ColorPrimary     = colorPrimary
-	ColorInfo        = colorInfo
-	ColorBorder      = colorBorder
-	ColorSuccess     = colorSuccess
-	ColorDanger      = colorDanger
-	ColorTextDim     = colorTextDim
-	TitleBoldStyle   = titleBoldStyle
-	TableHeaderStyle = tableHeaderStyle
-	TableLabelStyle  = tableLabelStyle
-	TableValueStyle  = tableValueStyle
-	TableBorderStyle = tableBorderStyle
-	HintStyle        = hintStyle
-	SuccessStyle     = successStyle
-	DangerStyle      = dangerStyle
-	TreeStyle        = treeConnectorStyle
 )
 
 func getRiskStyle(risk string) lipgloss.Style {
@@ -241,7 +180,7 @@ func GetTerminalWidth() int {
 func RenderTitledBox(title, content string, borderColor lipgloss.Color) string {
 	width := GetTerminalWidth() - 2
 
-	titleRendered := titleBoldStyle.
+	titleRendered := TitleBoldStyle.
 		Foreground(borderColor).
 		Render(title)
 
@@ -251,10 +190,6 @@ func RenderTitledBox(title, content string, borderColor lipgloss.Color) string {
 		Render(content)
 
 	return titleRendered + "\n" + box
-}
-
-func RenderCommandBox(title, command string) string {
-	return RenderTitledBox(title, HighlightCommand(command), colorInfo)
 }
 
 func RenderOutputBox(content string) string {

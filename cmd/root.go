@@ -25,8 +25,10 @@ Examples:
   shelp "find all pdf files larger than 10MB"
   shelp "show disk usage for current directory"
   shelp "list all running docker containers"`,
-		Version: version.String(),
-		Args:    cobra.ArbitraryArgs,
+		Version:       version.String(),
+		Args:          cobra.ArbitraryArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return cmd.Help()
@@ -180,10 +182,7 @@ func executeSelectedCommands(commands []string, shell string) error {
 			branch = prompt.TreeLastBranch
 		}
 
-		cmdPreview := result.cmd
-		if len(cmdPreview) > 50 {
-			cmdPreview = cmdPreview[:47] + "..."
-		}
+		cmdPreview := prompt.Truncate(result.cmd, 50)
 
 		styledBranch := prompt.TreeStyle.Render(branch)
 

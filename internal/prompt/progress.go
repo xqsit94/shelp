@@ -8,10 +8,10 @@ import (
 )
 
 type executionModel struct {
-	spinner  spinner.Model
-	message  string
-	command  string
-	done     bool
+	spinner spinner.Model
+	message string
+	command string
+	done    bool
 }
 
 func newExecutionModel(command, message string) executionModel {
@@ -53,10 +53,7 @@ func (m executionModel) View() string {
 		return ""
 	}
 
-	cmdPreview := m.command
-	if len(cmdPreview) > 50 {
-		cmdPreview = cmdPreview[:47] + "..."
-	}
+	cmdPreview := Truncate(m.command, 50)
 
 	return fmt.Sprintf("\n%s %s\n%s\n",
 		m.spinner.View(),
@@ -88,11 +85,11 @@ func (e *ExecutionProgress) Stop() {
 }
 
 type batchProgressModel struct {
-	spinner  spinner.Model
-	current  int
-	total    int
-	command  string
-	done     bool
+	spinner spinner.Model
+	current int
+	total   int
+	command string
+	done    bool
 }
 
 func newBatchProgressModel(current, total int, command string) batchProgressModel {
@@ -137,10 +134,7 @@ func (m batchProgressModel) View() string {
 
 	progressText := fmt.Sprintf("Executing %d of %d", m.current, m.total)
 
-	cmdPreview := m.command
-	if len(cmdPreview) > 50 {
-		cmdPreview = cmdPreview[:47] + "..."
-	}
+	cmdPreview := Truncate(m.command, 50)
 
 	return fmt.Sprintf("\n%s %s\n%s\n",
 		m.spinner.View(),

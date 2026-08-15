@@ -12,7 +12,6 @@ type ConfirmChoice int
 const (
 	ConfirmExecute ConfirmChoice = iota
 	ConfirmRegenerate
-	ConfirmSkip
 	ConfirmCancel
 )
 
@@ -80,11 +79,11 @@ func (m confirmModel) View() string {
 	riskEmoji := safety.GetRiskEmoji(m.risk)
 	riskStyle := getRiskStyle(string(m.risk))
 
-	cmdTitleStyle := titleBoldStyle.Foreground(colorInfo)
+	cmdTitleStyle := TitleBoldStyle.Foreground(ColorInfo)
 
 	s := "\n"
 	s += cmdTitleStyle.Render("Generated Command") + "\n"
-	s += treeConnectorStyle.Render(TreeLastBranch) + " " + HighlightCommand(m.command) + "\n"
+	s += TreeStyle.Render(TreeLastBranch) + " " + HighlightCommand(m.command) + "\n"
 	s += fmt.Sprintf("   %s %s\n\n", riskEmoji, riskStyle.Render(string(m.risk)))
 
 	for i, choice := range m.choices {
@@ -104,7 +103,7 @@ func (m confirmModel) View() string {
 
 func ConfirmExecutionInteractive(cmd string) ConfirmChoice {
 	if safety.IsBlocked(cmd) {
-		fmt.Println(dangerStyle.Render("This command has been blocked for safety reasons."))
+		fmt.Println(DangerStyle.Render("This command has been blocked for safety reasons."))
 		return ConfirmCancel
 	}
 

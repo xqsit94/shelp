@@ -82,8 +82,3 @@ func DetectShell() string {
 
 	return "bash"
 }
-
-func IsShellAvailable(shell string) bool {
-	_, err := exec.LookPath(shell)
-	return err == nil
-}

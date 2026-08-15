@@ -99,7 +99,7 @@ func (m outputModel) View() string {
 		m.title = "Output"
 	}
 
-	titleRendered := titleBoldStyle.
+	titleRendered := TitleBoldStyle.
 		Foreground(titleColor).
 		Render(m.title)
 

@@ -6,11 +6,9 @@ import (
 )
 
 const (
-	IconSuccess = "●"
-	IconError   = "●"
-	IconWarning = "●"
-	IconInfo    = "●"
-	IconArrow   = "→"
+	IconSuccess = "✓"
+	IconError   = "✕"
+	IconWarning = "▲"
 )
 
 func DisplayOutput(output string, isError bool) {
@@ -32,17 +30,13 @@ func DisplayOutput(output string, isError bool) {
 }
 
 func DisplaySuccess(message string) {
-	fmt.Println(successStyle.Render("  " + IconSuccess + " " + message))
+	fmt.Println(SuccessStyle.Render("  " + IconSuccess + " " + message))
 }
 
 func DisplayError(message string) {
-	fmt.Println(dangerStyle.Render("  " + IconError + " " + message))
+	fmt.Println(DangerStyle.Render("  " + IconError + " " + message))
 }
 
 func DisplayWarning(message string) {
 	fmt.Println(warningStyle.Render("  " + IconWarning + " " + message))
-}
-
-func DisplayInfo(message string) {
-	fmt.Println(infoStyle.Render("  " + IconInfo + " " + message))
 }

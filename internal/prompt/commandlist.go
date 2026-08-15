@@ -130,7 +130,7 @@ func (m commandListModel) View() string {
 	var b strings.Builder
 
 	title := fmt.Sprintf("Generated Commands (%d)", len(m.commands))
-	cmdTitleStyle := titleBoldStyle.Foreground(colorInfo)
+	cmdTitleStyle := TitleBoldStyle.Foreground(ColorInfo)
 
 	b.WriteString("\n" + cmdTitleStyle.Render(title) + "\n")
 
@@ -143,7 +143,7 @@ func (m commandListModel) View() string {
 			branch = TreeLastBranch
 		}
 
-		connectorStyle := treeConnectorStyle
+		connectorStyle := TreeStyle
 		if isActive {
 			connectorStyle = treeConnectorActiveStyle
 		}
@@ -203,14 +203,11 @@ func (m commandListModel) View() string {
 func (m commandListModel) viewRegenerateMode() string {
 	var b strings.Builder
 
-	regenTitleStyle := titleBoldStyle.Foreground(colorPrimary)
+	regenTitleStyle := TitleBoldStyle.Foreground(ColorPrimary)
 
 	b.WriteString("\n" + regenTitleStyle.Render("Refine your request") + "\n")
 
-	queryPreview := m.originalQuery
-	if len(queryPreview) > 60 {
-		queryPreview = queryPreview[:57] + "..."
-	}
+	queryPreview := Truncate(m.originalQuery, 60)
 
 	b.WriteString(hintStyle.Render(fmt.Sprintf("  Original: \"%s\"\n\n", queryPreview)))
 
