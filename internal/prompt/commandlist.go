@@ -134,39 +134,57 @@ func (m commandListModel) View() string {
 
 	b.WriteString("\n" + cmdTitleStyle.Render(title) + "\n")
 
-	var content strings.Builder
 	for i, item := range m.commands {
-		cursor := "  "
-		if m.cursor == i {
-			cursor = cursorStyle.Render("> ")
+		isLast := i == len(m.commands)-1
+		isActive := m.cursor == i
+
+		branch := TreeBranch
+		if isLast {
+			branch = TreeLastBranch
 		}
 
-		checkbox := checkboxUncheckedStyle.Render("○")
+		connectorStyle := treeConnectorStyle
+		if isActive {
+			connectorStyle = treeConnectorActiveStyle
+		}
+
+		checkbox := checkboxUncheckedStyle.Render("[○]")
 		if item.Selected {
-			checkbox = checkboxCheckedStyle.Render("●")
+			checkbox = checkboxCheckedStyle.Render("[●]")
 		}
 		if safety.IsBlocked(item.Command) {
-			checkbox = dangerStyle.Render("⊘")
+			checkbox = checkboxBlockedStyle.Render("[⊘]")
+		}
+
+		cmdLine := fmt.Sprintf("%s %s %s",
+			connectorStyle.Render(branch),
+			checkbox,
+			HighlightCommand(item.Command),
+		)
+		b.WriteString(cmdLine + "\n")
+
+		verticalLine := TreeVertical
+		if isLast {
+			verticalLine = " "
 		}
 
 		riskEmoji := safety.GetRiskEmoji(item.Risk)
 		riskStyle := getRiskStyle(string(item.Risk))
 
-		line := fmt.Sprintf("%s%s %s  %s %s",
-			cursor,
-			checkbox,
-			HighlightCommand(item.Command),
+		riskText := riskStyle.Render(string(item.Risk))
+		if safety.IsBlocked(item.Command) {
+			riskText = riskStyle.Render(string(item.Risk) + " (blocked)")
+		}
+
+		riskLine := fmt.Sprintf("%s     %s %s",
+			connectorStyle.Render(verticalLine),
 			riskEmoji,
-			riskStyle.Render(string(item.Risk)),
+			riskText,
 		)
-		content.WriteString(line + "\n")
+		b.WriteString(riskLine + "\n")
 	}
 
-	box := commandBoxStyle.
-		Width(GetTerminalWidth() - 2).
-		Render(content.String())
-
-	b.WriteString(box + "\n\n")
+	b.WriteString("\n")
 
 	selectedCount := 0
 	for _, item := range m.commands {

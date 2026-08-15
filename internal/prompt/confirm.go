@@ -80,10 +80,12 @@ func (m confirmModel) View() string {
 	riskEmoji := safety.GetRiskEmoji(m.risk)
 	riskStyle := getRiskStyle(string(m.risk))
 
+	cmdTitleStyle := titleBoldStyle.Foreground(colorInfo)
+
 	s := "\n"
-	s += RenderCommandBox("Generated Command", m.command)
-	s += "\n"
-	s += fmt.Sprintf("Risk: %s %s\n\n", riskEmoji, riskStyle.Render(string(m.risk)))
+	s += cmdTitleStyle.Render("Generated Command") + "\n"
+	s += treeConnectorStyle.Render(TreeLastBranch) + " " + HighlightCommand(m.command) + "\n"
+	s += fmt.Sprintf("   %s %s\n\n", riskEmoji, riskStyle.Render(string(m.risk)))
 
 	for i, choice := range m.choices {
 		cursor := "  "

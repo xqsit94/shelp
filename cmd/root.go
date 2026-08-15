@@ -133,6 +133,14 @@ func executeSelectedCommands(commands []string, shell string) error {
 	}
 
 	total := len(commands)
+	results := make([]struct {
+		cmd       string
+		success   bool
+		exitCode  int
+		output    string
+		errOutput string
+		execErr   error
+	}, total)
 
 	for i, cmd := range commands {
 		progress := prompt.NewBatchExecutionProgress(i+1, total, cmd)
@@ -142,38 +150,61 @@ func executeSelectedCommands(commands []string, shell string) error {
 
 		progress.Stop()
 
-		cmdPreview := cmd
-		if len(cmdPreview) > 50 {
-			cmdPreview = cmdPreview[:47] + "..."
-		}
+		results[i].cmd = cmd
+		results[i].execErr = err
 
 		if err != nil {
-			prompt.DisplayError(fmt.Sprintf("[%d/%d] %s", i+1, total, cmdPreview))
-			prompt.DisplayError(fmt.Sprintf("  Failed: %v", err))
+			results[i].success = false
 			if i < total-1 {
 				if !prompt.ConfirmYesNoInteractive("Continue with next command?") {
-					return nil
+					results = results[:i+1]
+					break
 				}
 			}
 			continue
 		}
 
-		if execResult.Output != "" {
-			fmt.Println()
-			prompt.DisplayOutputInteractive(execResult.Output, false)
+		results[i].success = execResult.ExitCode == 0
+		results[i].exitCode = execResult.ExitCode
+		results[i].output = execResult.Output
+		results[i].errOutput = execResult.Error
+	}
+
+	fmt.Println()
+	fmt.Println(prompt.TitleBoldStyle.Render(fmt.Sprintf("Executed Commands (%d)", len(results))))
+
+	for i, result := range results {
+		isLast := i == len(results)-1
+		branch := prompt.TreeBranch
+		if isLast {
+			branch = prompt.TreeLastBranch
 		}
 
-		if execResult.Error != "" {
-			fmt.Println()
-			prompt.DisplayOutputInteractive(execResult.Error, true)
+		cmdPreview := result.cmd
+		if len(cmdPreview) > 50 {
+			cmdPreview = cmdPreview[:47] + "..."
 		}
 
-		if execResult.ExitCode != 0 {
-			prompt.DisplayWarning(fmt.Sprintf("[%d/%d] %s - exited with code %d", i+1, total, cmdPreview, execResult.ExitCode))
+		styledBranch := prompt.TreeStyle.Render(branch)
+
+		if result.execErr != nil {
+			fmt.Println(styledBranch + " " + prompt.DangerStyle.Render(cmdPreview+" ✕"))
+			fmt.Println(prompt.DangerStyle.Render("   Failed: " + result.execErr.Error()))
+		} else if !result.success {
+			fmt.Println(styledBranch + " " + prompt.DangerStyle.Render(fmt.Sprintf("%s ✕ (exit %d)", cmdPreview, result.exitCode)))
 		} else {
-			prompt.DisplaySuccess(fmt.Sprintf("[%d/%d] %s ✓", i+1, total, cmdPreview))
+			fmt.Println(styledBranch + " " + prompt.SuccessStyle.Render(cmdPreview+" ✓"))
 		}
-		fmt.Println()
+
+		if result.output != "" {
+			fmt.Println()
+			prompt.DisplayOutputInteractive(result.output, false)
+		}
+
+		if result.errOutput != "" {
+			fmt.Println()
+			prompt.DisplayOutputInteractive(result.errOutput, true)
+		}
 	}
 
 	return nil

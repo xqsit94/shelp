@@ -7,6 +7,12 @@ import (
 	"golang.org/x/term"
 )
 
+const (
+	TreeBranch     = "├─"
+	TreeLastBranch = "└─"
+	TreeVertical   = "│"
+)
+
 var (
 	// Primary - Brand violet
 	colorPrimary    = lipgloss.Color("#7C3AED")
@@ -134,6 +140,14 @@ var (
 	hintStyle = lipgloss.NewStyle().
 			Foreground(colorTextMuted)
 
+	// Tree connector styles
+	treeConnectorStyle = lipgloss.NewStyle().
+				Foreground(colorBorder)
+
+	treeConnectorActiveStyle = lipgloss.NewStyle().
+					Foreground(colorPrimary).
+					Bold(true)
+
 	// Progress/Spinner styles
 	spinnerStyle = lipgloss.NewStyle().
 			Foreground(colorPrimary)
@@ -189,12 +203,18 @@ var (
 	ColorPrimary     = colorPrimary
 	ColorInfo        = colorInfo
 	ColorBorder      = colorBorder
+	ColorSuccess     = colorSuccess
+	ColorDanger      = colorDanger
+	ColorTextDim     = colorTextDim
 	TitleBoldStyle   = titleBoldStyle
 	TableHeaderStyle = tableHeaderStyle
 	TableLabelStyle  = tableLabelStyle
 	TableValueStyle  = tableValueStyle
 	TableBorderStyle = tableBorderStyle
 	HintStyle        = hintStyle
+	SuccessStyle     = successStyle
+	DangerStyle      = dangerStyle
+	TreeStyle        = treeConnectorStyle
 )
 
 func getRiskStyle(risk string) lipgloss.Style {
