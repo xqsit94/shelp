@@ -53,10 +53,7 @@ jobs:
           git diff --exit-code go.mod go.sum
 
       - name: Staticcheck
-        uses: dominikh/staticcheck-action@v1
-        with:
-          version: latest
-          install-go: false
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 
       - name: Govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
