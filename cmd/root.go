@@ -9,11 +9,13 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/atotto/clipboard"
 	"github.com/spf13/cobra"
 	"github.com/xqsit94/shelp/internal/ai"
 	"github.com/xqsit94/shelp/internal/config"
 	"github.com/xqsit94/shelp/internal/executor"
 	"github.com/xqsit94/shelp/internal/prompt"
+	"github.com/xqsit94/shelp/internal/safety"
 	"github.com/xqsit94/shelp/internal/version"
 )
 
@@ -59,8 +61,14 @@ func Run() int {
 	return 1
 }
 
+type runOptions struct {
+	print bool
+	yes   bool
+	copy  bool
+}
+
 func RootCmd() *cobra.Command {
-	var debug bool
+	var opts runOptions
 
 	cmd := &cobra.Command{
 		Use:   "shelp [query]",
@@ -70,10 +78,13 @@ func RootCmd() *cobra.Command {
 Convert natural language queries into safe, executable shell commands.
 Always prompts for confirmation before execution.
 
+Without a terminal (piped or captured output) the commands are printed
+instead of run, so shelp can be used in $(...) or through a pipe.
+
 Examples:
   shelp "find all pdf files larger than 10MB"
-  shelp "show disk usage for current directory"
-  shelp "list all running docker containers"`,
+  shelp -p "show disk usage for current directory"
+  shelp -y "list all running docker containers"`,
 		Version:       version.String(),
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
@@ -83,21 +94,22 @@ Examples:
 				return cmd.Help()
 			}
 
-			return runQuery(cmd.Context(), strings.Join(args, " "), debug)
+			return runQuery(cmd, strings.Join(args, " "), opts)
 		},
 	}
 
-	cmd.PersistentFlags().BoolVar(&debug, "debug", false, "print AI requests and responses to stderr")
+	cmd.Flags().BoolVarP(&opts.print, "print", "p", false, "print the generated commands instead of running them")
+	cmd.Flags().BoolVarP(&opts.yes, "yes", "y", false, "run the generated commands without confirmation")
+	cmd.Flags().BoolVarP(&opts.copy, "copy", "c", false, "print the generated commands and copy them to the clipboard")
+	cmd.PersistentFlags().Bool("debug", false, "print AI requests and responses to stderr")
 
 	cmd.AddCommand(ConfigCmd())
 
 	return cmd
 }
 
-func runQuery(ctx context.Context, query string, debug bool) error {
-	if !prompt.IsInteractive() {
-		return &ExitError{Code: 1, Err: errors.New("shelp needs an interactive terminal")}
-	}
+func runQuery(cmd *cobra.Command, query string, opts runOptions) error {
+	ctx := cmd.Context()
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -105,7 +117,10 @@ func runQuery(ctx context.Context, query string, debug bool) error {
 	}
 
 	if !cfg.IsConfigured() {
-		if err := runFirstTimeSetup(cfg); err != nil {
+		if !prompt.IsInteractive() {
+			return &ExitError{Code: 1, Err: errors.New("shelp is not configured: run it once in an interactive terminal, or set SHELP_URL, SHELP_API_KEY and SHELP_MODEL")}
+		}
+		if err := runFirstTimeSetup(cmd, cfg); err != nil {
 			return err
 		}
 	}
@@ -113,27 +128,25 @@ func runQuery(ctx context.Context, query string, debug bool) error {
 	shell := executor.DetectShell()
 
 	client := ai.NewClient(cfg.AIURL, cfg.APIKey, cfg.Model)
-	client.Debug = debug || os.Getenv("SHELP_DEBUG") == "1"
+	client.Debug = debugEnabled(cmd)
+
+	// Without a terminal there is nobody to answer the confirmation prompt, so
+	// printing the commands is the only useful thing left to do.
+	printOnly := opts.print || opts.copy || (!opts.yes && !prompt.IsInteractive())
 
 	request := ai.Request{Query: query, Shell: shell}
 
 	for {
-		commands, err := prompt.RunWithSpinner(ctx, "Generating commands...", func(ctx context.Context) ([]string, error) {
-			return client.GenerateCommands(ctx, request)
-		})
-
+		commands, err := generateCommands(ctx, client, request)
 		if err != nil {
-			if cancelled(err) {
-				prompt.DisplayWarning("Execution cancelled.")
-				return &ExitError{Code: exitCancelled}
-			}
-			prompt.DisplayError(fmt.Sprintf("Failed to generate commands: %v", err))
-			return &ExitError{Code: 1}
+			return err
 		}
 
-		if len(commands) == 0 {
-			prompt.DisplayWarning("No commands generated. The request may be unclear or potentially unsafe.")
-			return &ExitError{Code: 1}
+		switch {
+		case printOnly:
+			return printCommands(cmd, commands, opts.copy)
+		case opts.yes:
+			return executeWithoutConfirmation(ctx, commands, shell)
 		}
 
 		result := prompt.SelectCommands(commands, query)
@@ -152,11 +165,82 @@ func runQuery(ctx context.Context, query string, debug bool) error {
 	}
 }
 
+func generateCommands(ctx context.Context, client *ai.Client, request ai.Request) ([]string, error) {
+	commands, err := prompt.RunWithSpinner(ctx, "Generating commands...", func(ctx context.Context) ([]string, error) {
+		return client.GenerateCommands(ctx, request)
+	})
+
+	if err != nil {
+		if cancelled(err) {
+			prompt.DisplayWarning("Execution cancelled.")
+			return nil, &ExitError{Code: exitCancelled}
+		}
+		prompt.DisplayError(fmt.Sprintf("Failed to generate commands: %v", err))
+		return nil, &ExitError{Code: 1}
+	}
+
+	if len(commands) == 0 {
+		prompt.DisplayWarning("No commands generated. The request may be unclear or potentially unsafe.")
+		return nil, &ExitError{Code: 1}
+	}
+
+	return commands, nil
+}
+
+func printCommands(cmd *cobra.Command, commands []string, toClipboard bool) error {
+	out := cmd.OutOrStdout()
+	highlight := prompt.IsTerminalWriter(out)
+
+	for _, command := range commands {
+		if safety.IsBlocked(command) {
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s blocked for safety reasons, do not run: %s\n", prompt.IconWarning, prompt.Oneline(command))
+		}
+
+		if highlight {
+			command = prompt.HighlightCommand(command)
+		}
+		fmt.Fprintln(out, command)
+	}
+
+	if toClipboard {
+		if err := clipboard.WriteAll(strings.Join(commands, "\n")); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s could not copy to the clipboard: %v\n", prompt.IconWarning, err)
+		}
+	}
+
+	return nil
+}
+
+func executeWithoutConfirmation(ctx context.Context, commands []string, shell string) error {
+	prompt.DisplayCommandPlan(commands)
+
+	allowed := make([]string, 0, len(commands))
+	for _, command := range commands {
+		if safety.IsBlocked(command) {
+			prompt.DisplayWarning("Skipping blocked command: " + prompt.Oneline(command))
+			continue
+		}
+		allowed = append(allowed, command)
+	}
+
+	if len(allowed) == 0 {
+		prompt.DisplayError("Every generated command was blocked for safety reasons.")
+		return &ExitError{Code: 1}
+	}
+
+	return executeSelectedCommands(ctx, allowed, shell)
+}
+
 func cancelled(err error) bool {
 	return errors.Is(err, prompt.ErrCancelled) || errors.Is(err, context.Canceled)
 }
 
-func runFirstTimeSetup(cfg *config.Config) error {
+func debugEnabled(cmd *cobra.Command) bool {
+	debug, _ := cmd.Flags().GetBool("debug")
+	return debug || os.Getenv("SHELP_DEBUG") == "1"
+}
+
+func runFirstTimeSetup(cmd *cobra.Command, cfg *config.Config) error {
 	result := prompt.RunSetupWizard()
 
 	if result.Cancelled {
@@ -184,6 +268,14 @@ func runFirstTimeSetup(cfg *config.Config) error {
 
 	fmt.Println()
 	prompt.DisplaySuccess("Configuration saved!")
+	warnInsecureURL(cfg.AIURL)
+
+	if err := testConnection(cmd, cfg); err != nil {
+		prompt.DisplayWarning("The configuration was saved but the connection test failed.")
+		prompt.DisplayWarning("Fix it with: shelp config set url|key|model, then run: shelp config test")
+		return err
+	}
+
 	fmt.Println()
 
 	return nil

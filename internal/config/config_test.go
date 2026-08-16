@@ -57,8 +57,22 @@ func TestIsConfigured(t *testing.T) {
 	}
 }
 
+// isolate points config at a scratch directory and clears the environment
+// overrides so ambient SHELP_* values cannot leak into a test.
+func isolate(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	t.Setenv(paths.ConfigDirEnv, dir)
+	t.Setenv(EnvURL, "")
+	t.Setenv(EnvAPIKey, "")
+	t.Setenv(EnvModel, "")
+
+	return dir
+}
+
 func TestLoadMissingFile(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	isolate(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -70,8 +84,7 @@ func TestLoadMissingFile(t *testing.T) {
 }
 
 func TestSaveLoadResetRoundTrip(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	dir := isolate(t)
 
 	want := &Config{
 		AIURL:  "https://openrouter.ai/api/v1/chat/completions",
@@ -83,7 +96,7 @@ func TestSaveLoadResetRoundTrip(t *testing.T) {
 		t.Fatalf("Save() returned error: %v", err)
 	}
 
-	configPath := filepath.Join(home, paths.ConfigDirName, paths.ConfigFileName)
+	configPath := filepath.Join(dir, paths.ConfigFileName)
 	info, err := os.Stat(configPath)
 	if err != nil {
 		t.Fatalf("stat config file: %v", err)
@@ -117,5 +130,86 @@ func TestSaveLoadResetRoundTrip(t *testing.T) {
 	}
 	if *got != (Config{}) {
 		t.Errorf("Load() after Reset() = %+v, want zero config", *got)
+	}
+}
+
+func TestLoadEnvOverrides(t *testing.T) {
+	isolate(t)
+
+	file := &Config{AIURL: "https://file", APIKey: "file-key", Model: "file-model"}
+	if err := Save(file); err != nil {
+		t.Fatalf("Save() returned error: %v", err)
+	}
+
+	t.Setenv(EnvURL, "https://env")
+	t.Setenv(EnvModel, "  env-model  ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+
+	want := Config{
+		AIURL:   "https://env",
+		APIKey:  "file-key",
+		Model:   "env-model",
+		FromEnv: Sources{AIURL: true, Model: true},
+	}
+	if *cfg != want {
+		t.Errorf("Load() = %+v, want %+v", *cfg, want)
+	}
+
+	onDisk, err := LoadFile()
+	if err != nil {
+		t.Fatalf("LoadFile() returned error: %v", err)
+	}
+	if *onDisk != *file {
+		t.Errorf("LoadFile() = %+v, want %+v", *onDisk, *file)
+	}
+}
+
+func TestLoadEnvOnlyIsConfigured(t *testing.T) {
+	isolate(t)
+
+	t.Setenv(EnvURL, "https://env")
+	t.Setenv(EnvAPIKey, "env-key")
+	t.Setenv(EnvModel, "env-model")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if !cfg.IsConfigured() {
+		t.Errorf("IsConfigured() = false for env-only config %+v", *cfg)
+	}
+	if cfg.FromEnv != (Sources{AIURL: true, APIKey: true, Model: true}) {
+		t.Errorf("FromEnv = %+v, want all true", cfg.FromEnv)
+	}
+}
+
+func TestInsecureURL(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want bool
+	}{
+		{"https", "https://openrouter.ai/api/v1/chat/completions", false},
+		{"http remote", "http://example.com/v1/chat/completions", true},
+		{"http remote with port", "http://192.168.1.10:8080/v1", true},
+		{"http localhost", "http://localhost:11434/v1/chat/completions", false},
+		{"http loopback ipv4", "http://127.0.0.1:1234/v1", false},
+		{"http loopback ipv6", "http://[::1]:1234/v1", false},
+		{"uppercase scheme", "HTTP://example.com/v1", true},
+		{"padded", "  http://example.com/v1  ", true},
+		{"empty", "", false},
+		{"no scheme", "example.com/v1", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := InsecureURL(tt.url); got != tt.want {
+				t.Errorf("InsecureURL(%q) = %v, want %v", tt.url, got, tt.want)
+			}
+		})
 	}
 }
