@@ -20,27 +20,60 @@ import (
 )
 
 const (
-	requestTimeout  = 60 * time.Second
-	maxAttempts     = 3
-	maxRetryAfter   = 10 * time.Second
-	maxCommandRunes = 4096
-	maxErrorChars   = 500
-	maxDebugChars   = 4096
+	requestTimeout      = 60 * time.Second
+	maxAttempts         = 3
+	maxRetryAfter       = 10 * time.Second
+	maxCommandRunes     = 4096
+	maxExplanationRunes = 120
+	maxErrorChars       = 500
+	maxDebugChars       = 4096
 )
 
 var retryBackoff = []time.Duration{500 * time.Millisecond, 1500 * time.Millisecond}
 
 type Client struct {
-	URL    string
-	APIKey string
-	Model  string
-	Debug  bool
+	URL         string
+	APIKey      string
+	Model       string
+	Temperature *float64
+	MaxTokens   *int
+	Debug       bool
 
 	http *http.Client
 }
 
+// Suggestion is one command with a short description of what it does. The
+// explanation is optional: providers may omit it, and it is dropped once the
+// user edits the command.
+type Suggestion struct {
+	Command     string `json:"command"`
+	Explanation string `json:"explanation,omitempty"`
+}
+
+// Models answer with either a bare command string or an object, sometimes
+// mixing both shapes in one array.
+func (s *Suggestion) UnmarshalJSON(data []byte) error {
+	var command string
+	if err := json.Unmarshal(data, &command); err == nil {
+		s.Command = command
+		return nil
+	}
+
+	var object struct {
+		Command     string `json:"command"`
+		Explanation string `json:"explanation"`
+	}
+	if err := json.Unmarshal(data, &object); err != nil {
+		return err
+	}
+	s.Command = object.Command
+	s.Explanation = object.Explanation
+
+	return nil
+}
+
 type Turn struct {
-	Commands []string
+	Commands []Suggestion
 	Feedback string
 }
 
@@ -56,8 +89,10 @@ type Message struct {
 }
 
 type ChatRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
+	Model       string    `json:"model"`
+	Messages    []Message `json:"messages"`
+	Temperature *float64  `json:"temperature,omitempty"`
+	MaxTokens   *int      `json:"max_tokens,omitempty"`
 }
 
 type ChatResponse struct {
@@ -139,8 +174,13 @@ func NewClient(url, apiKey, model string) *Client {
 	}
 }
 
-func (c *Client) GenerateCommands(ctx context.Context, req Request) ([]string, error) {
-	body, err := json.Marshal(ChatRequest{Model: c.Model, Messages: buildMessages(req)})
+func (c *Client) GenerateCommands(ctx context.Context, req Request) ([]Suggestion, error) {
+	body, err := json.Marshal(ChatRequest{
+		Model:       c.Model,
+		Messages:    buildMessages(req),
+		Temperature: c.Temperature,
+		MaxTokens:   c.MaxTokens,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %v", err)
 	}
@@ -163,7 +203,7 @@ func (c *Client) GenerateCommands(ctx context.Context, req Request) ([]string, e
 
 		content, err := c.send(ctx, body)
 		if err == nil {
-			return parseCommands(content)
+			return parseSuggestions(content)
 		}
 		if !retryable(err) {
 			return nil, err
@@ -283,7 +323,7 @@ func buildMessages(req Request) []Message {
 	}
 
 	for _, turn := range req.History {
-		commands, err := json.Marshal(turn.Commands)
+		suggestions, err := json.Marshal(turn.Commands)
 		if err != nil {
 			continue
 		}
@@ -294,7 +334,7 @@ func buildMessages(req Request) []Message {
 		}
 
 		messages = append(messages,
-			Message{Role: "assistant", Content: string(commands)},
+			Message{Role: "assistant", Content: string(suggestions)},
 			Message{Role: "user", Content: "The user rejected those commands. " + feedback},
 		)
 	}
@@ -323,8 +363,8 @@ Environment:
 %s
 
 Rules:
-1. Generate only shell commands, no explanations or markdown
-2. Return commands as a JSON array: ["cmd1", "cmd2"]
+1. Return a JSON array of objects: [{"command": "cmd1", "explanation": "what it does"}]
+2. "explanation" is ONE short plain-text sentence of at most 15 words, no markdown, describing what the command does
 3. Every array entry runs in a SEPARATE fresh non-interactive shell process: cd, environment variables, and shell options do NOT carry over from one entry to the next
 4. Combine dependent steps into a single entry with && (e.g. "cd project && npm test") or use absolute paths
 5. Prefer ONE entry unless the request genuinely needs independent steps
@@ -334,10 +374,10 @@ Rules:
 9. Always return valid JSON - nothing else
 
 Example outputs:
-- User: "list all files" -> ["ls -la"]
-- User: "find large pdf files" -> ["find . -name \"*.pdf\" -size +10M"]
-- User: "create a backup of my documents" -> ["mkdir -p ~/backup && cp -r ~/Documents/* ~/backup/"]
-- User: "install deps and run tests in the api folder" -> ["cd api && npm install && npm test"]
+- User: "list all files" -> [{"command": "ls -la", "explanation": "Lists files including hidden ones"}]
+- User: "find large pdf files" -> [{"command": "find . -name \"*.pdf\" -size +10M", "explanation": "Finds PDF files larger than 10 megabytes"}]
+- User: "create a backup of my documents" -> [{"command": "mkdir -p ~/backup && cp -r ~/Documents/* ~/backup/", "explanation": "Copies your documents into a backup folder"}]
+- User: "install deps and run tests in the api folder" -> [{"command": "cd api && npm install && npm test", "explanation": "Installs dependencies and runs the API test suite"}]
 - User: "delete everything" -> []`, strings.Join(environment, "\n"))
 }
 
@@ -352,22 +392,27 @@ func osHints() string {
 	}
 }
 
-func parseCommands(content string) ([]string, error) {
+func parseSuggestions(content string) ([]Suggestion, error) {
 	content = stripFences(content)
 
-	raw, err := decodeCommands(content)
+	raw, err := decodeSuggestions(content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse commands from AI response: %v\nResponse: %s", err, truncate(content, maxErrorChars))
 	}
 
-	commands := make([]string, 0, len(raw))
-	for _, command := range raw {
-		if sanitized := sanitize(command); sanitized != "" {
-			commands = append(commands, sanitized)
+	suggestions := make([]Suggestion, 0, len(raw))
+	for _, suggestion := range raw {
+		command := sanitize(suggestion.Command)
+		if command == "" {
+			continue
 		}
+		suggestions = append(suggestions, Suggestion{
+			Command:     command,
+			Explanation: sanitizeExplanation(suggestion.Explanation),
+		})
 	}
 
-	return commands, nil
+	return suggestions, nil
 }
 
 func stripFences(content string) string {
@@ -378,7 +423,7 @@ func stripFences(content string) string {
 	return strings.TrimSpace(content)
 }
 
-func decodeCommands(content string) ([]string, error) {
+func decodeSuggestions(content string) ([]Suggestion, error) {
 	candidates := []string{content}
 	if start, end := strings.Index(content, "["), strings.LastIndex(content, "]"); start >= 0 && end > start {
 		candidates = append(candidates, content[start:end+1])
@@ -386,9 +431,9 @@ func decodeCommands(content string) ([]string, error) {
 
 	var firstErr error
 	for _, candidate := range candidates {
-		commands, err := unmarshalCommands([]byte(candidate))
+		suggestions, err := unmarshalSuggestions([]byte(candidate))
 		if err == nil {
-			return commands, nil
+			return suggestions, nil
 		}
 		if firstErr == nil {
 			firstErr = err
@@ -398,25 +443,14 @@ func decodeCommands(content string) ([]string, error) {
 	return nil, firstErr
 }
 
-func unmarshalCommands(data []byte) ([]string, error) {
-	var commands []string
-	if err := json.Unmarshal(data, &commands); err == nil {
-		return commands, nil
-	}
-
-	var objects []struct {
-		Command string `json:"command"`
-	}
-	if err := json.Unmarshal(data, &objects); err == nil {
-		commands = make([]string, 0, len(objects))
-		for _, object := range objects {
-			commands = append(commands, object.Command)
-		}
-		return commands, nil
+func unmarshalSuggestions(data []byte) ([]Suggestion, error) {
+	var suggestions []Suggestion
+	if err := json.Unmarshal(data, &suggestions); err == nil {
+		return suggestions, nil
 	}
 
 	var wrapper struct {
-		Commands []string `json:"commands"`
+		Commands []Suggestion `json:"commands"`
 	}
 	if err := json.Unmarshal(data, &wrapper); err == nil && wrapper.Commands != nil {
 		return wrapper.Commands, nil
@@ -440,6 +474,25 @@ func sanitize(command string) string {
 	}
 
 	return command
+}
+
+// Explanations are rendered on one dimmed line next to the command, so
+// anything that could move the cursor or wrap the row is removed here.
+func sanitizeExplanation(explanation string) string {
+	explanation = ansi.Strip(explanation)
+	explanation = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && !unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, explanation)
+	explanation = strings.Join(strings.Fields(explanation), " ")
+
+	if utf8.RuneCountInString(explanation) > maxExplanationRunes {
+		explanation = strings.TrimSpace(string([]rune(explanation)[:maxExplanationRunes]))
+	}
+
+	return explanation
 }
 
 func truncate(s string, max int) string {

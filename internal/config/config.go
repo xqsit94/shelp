@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -13,22 +14,30 @@ import (
 )
 
 const (
-	EnvURL    = "SHELP_URL"
-	EnvAPIKey = "SHELP_API_KEY"
-	EnvModel  = "SHELP_MODEL"
+	EnvURL         = "SHELP_URL"
+	EnvAPIKey      = "SHELP_API_KEY"
+	EnvModel       = "SHELP_MODEL"
+	EnvTemperature = "SHELP_TEMPERATURE"
+	EnvMaxTokens   = "SHELP_MAX_TOKENS"
 )
 
 // Sources records which fields came from the environment rather than the file.
 type Sources struct {
-	AIURL  bool
-	APIKey bool
-	Model  bool
+	AIURL       bool
+	APIKey      bool
+	Model       bool
+	Temperature bool
+	MaxTokens   bool
 }
 
+// Temperature and MaxTokens are optional: when unset nothing is sent to the
+// provider, because some OpenAI-compatible models reject the fields outright.
 type Config struct {
-	AIURL  string `json:"ai_url"`
-	APIKey string `json:"api_key"`
-	Model  string `json:"model"`
+	AIURL       string   `json:"ai_url"`
+	APIKey      string   `json:"api_key"`
+	Model       string   `json:"model"`
+	Temperature *float64 `json:"temperature,omitempty"`
+	MaxTokens   *int     `json:"max_tokens,omitempty"`
 
 	FromEnv Sources `json:"-"`
 }
@@ -41,7 +50,9 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	applyEnv(cfg)
+	if err := applyEnv(cfg); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
@@ -67,7 +78,7 @@ func LoadFile() (*Config, error) {
 	return &cfg, nil
 }
 
-func applyEnv(cfg *Config) {
+func applyEnv(cfg *Config) error {
 	overrides := []struct {
 		name   string
 		value  *string
@@ -84,6 +95,43 @@ func applyEnv(cfg *Config) {
 			*override.source = true
 		}
 	}
+
+	if value := strings.TrimSpace(os.Getenv(EnvTemperature)); value != "" {
+		temperature, err := ParseTemperature(value)
+		if err != nil {
+			return fmt.Errorf("invalid %s: %v", EnvTemperature, err)
+		}
+		cfg.Temperature = &temperature
+		cfg.FromEnv.Temperature = true
+	}
+
+	if value := strings.TrimSpace(os.Getenv(EnvMaxTokens)); value != "" {
+		maxTokens, err := ParseMaxTokens(value)
+		if err != nil {
+			return fmt.Errorf("invalid %s: %v", EnvMaxTokens, err)
+		}
+		cfg.MaxTokens = &maxTokens
+		cfg.FromEnv.MaxTokens = true
+	}
+
+	return nil
+}
+
+func ParseTemperature(value string) (float64, error) {
+	temperature, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	// Negated so that NaN, which compares false against everything, is rejected.
+	if err != nil || !(temperature >= 0 && temperature <= 2) {
+		return 0, fmt.Errorf("%q is not a number between 0 and 2", value)
+	}
+	return temperature, nil
+}
+
+func ParseMaxTokens(value string) (int, error) {
+	maxTokens, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || maxTokens <= 0 {
+		return 0, fmt.Errorf("%q is not a positive integer", value)
+	}
+	return maxTokens, nil
 }
 
 func Save(cfg *Config) error {

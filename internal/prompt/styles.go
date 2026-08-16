@@ -101,6 +101,10 @@ var (
 	hintStyle = lipgloss.NewStyle().
 			Foreground(colorTextMuted)
 
+	// Command explanations are secondary to the command itself.
+	ExplanationStyle = lipgloss.NewStyle().
+				Foreground(colorTextMuted)
+
 	// Tree connector styles
 	TreeStyle = lipgloss.NewStyle().
 			Foreground(colorBorder)

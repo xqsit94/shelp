@@ -26,30 +26,35 @@ func IsTerminalWriter(w io.Writer) bool {
 	return ok && term.IsTerminal(int(file.Fd()))
 }
 
-// DisplayCommandPlan prints one tree row per command with its risk level, so
-// unattended runs still show what is about to happen.
-func DisplayCommandPlan(commands []string) {
+// DisplayCommandPlan prints one tree row per command with its risk level and
+// explanation, so unattended runs still show what is about to happen.
+func DisplayCommandPlan(suggestions []Suggestion) {
 	fmt.Println()
-	fmt.Println(TitleBoldStyle.Foreground(ColorInfo).Render(fmt.Sprintf("Generated Commands (%d)", len(commands))))
+	fmt.Println(TitleBoldStyle.Foreground(ColorInfo).Render(fmt.Sprintf("Generated Commands (%d)", len(suggestions))))
 
-	for i, command := range commands {
+	for i, suggestion := range suggestions {
 		branch := TreeBranch
-		if i == len(commands)-1 {
+		if i == len(suggestions)-1 {
 			branch = TreeLastBranch
 		}
 
-		risk := safety.AssessRisk(command)
+		risk := safety.AssessRisk(suggestion.Command)
 		label := string(risk)
-		if safety.IsBlocked(command) {
+		if safety.IsBlocked(suggestion.Command) {
 			label += " (blocked)"
 		}
 
-		fmt.Printf("%s %s  %s %s\n",
+		row := fmt.Sprintf("%s %s  %s %s",
 			TreeStyle.Render(branch),
-			HighlightCommand(Oneline(command)),
+			HighlightCommand(Oneline(suggestion.Command)),
 			safety.GetRiskEmoji(risk),
 			getRiskStyle(string(risk)).Render(label),
 		)
+		if suggestion.Explanation != "" {
+			row += ExplanationStyle.Render(" — " + suggestion.Explanation)
+		}
+
+		fmt.Println(Truncate(row, GetTerminalWidth()))
 	}
 }
 

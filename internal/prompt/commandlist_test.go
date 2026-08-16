@@ -1,9 +1,11 @@
 package prompt
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/xqsit94/shelp/internal/safety"
 )
 
@@ -33,8 +35,18 @@ func send[M tea.Model](t *testing.T, model M, msgs ...tea.Msg) M {
 	return final
 }
 
+// suggested builds a list without explanations, which most tests do not care
+// about.
+func suggested(commands ...string) []Suggestion {
+	suggestions := make([]Suggestion, len(commands))
+	for i, command := range commands {
+		suggestions[i] = Suggestion{Command: command}
+	}
+	return suggestions
+}
+
 func TestCommandListEdit(t *testing.T) {
-	m := newCommandListModel([]string{"ls", "pwd"}, "list files")
+	m := newCommandListModel(suggested("ls", "pwd"), "list files")
 
 	m = send(t, m, key("e"), key(" -la"), enter)
 
@@ -53,7 +65,7 @@ func TestCommandListEdit(t *testing.T) {
 }
 
 func TestCommandListEditReassessesRisk(t *testing.T) {
-	m := newCommandListModel([]string{"ls", "pwd"}, "list files")
+	m := newCommandListModel(suggested("ls", "pwd"), "list files")
 
 	m = send(t, m, down, key("e"), key(" && sudo rm -r /tmp/x"), enter)
 
@@ -66,7 +78,7 @@ func TestCommandListEditReassessesRisk(t *testing.T) {
 }
 
 func TestCommandListEditBlockedDeselects(t *testing.T) {
-	m := newCommandListModel([]string{"ls", "pwd"}, "list files")
+	m := newCommandListModel(suggested("ls", "pwd"), "list files")
 
 	m = send(t, m, key("e"), key(" && rm -rf /"), enter)
 
@@ -82,7 +94,7 @@ func TestCommandListEditBlockedDeselects(t *testing.T) {
 }
 
 func TestCommandListEditEscapeKeepsCommand(t *testing.T) {
-	m := newCommandListModel([]string{"ls", "pwd"}, "list files")
+	m := newCommandListModel(suggested("ls", "pwd"), "list files")
 
 	m = send(t, m, key("e"), key(" -la"), esc)
 
@@ -95,7 +107,7 @@ func TestCommandListEditEscapeKeepsCommand(t *testing.T) {
 }
 
 func TestCommandListRegenerateRefinement(t *testing.T) {
-	m := newCommandListModel([]string{"ls", "pwd"}, "list files")
+	m := newCommandListModel(suggested("ls", "pwd"), "list files")
 
 	m = send(t, m, key("r"), key("use find instead"), enter)
 
@@ -108,7 +120,7 @@ func TestCommandListRegenerateRefinement(t *testing.T) {
 }
 
 func TestCommandListBlockedStartsDeselected(t *testing.T) {
-	m := newCommandListModel([]string{"rm -rf /", "ls"}, "clean up")
+	m := newCommandListModel(suggested("rm -rf /", "ls"), "clean up")
 
 	if m.commands[0].Selected {
 		t.Error("blocked command started selected")
@@ -118,5 +130,60 @@ func TestCommandListBlockedStartsDeselected(t *testing.T) {
 
 	if m.commands[0].Selected {
 		t.Error("blocked command could be toggled on")
+	}
+}
+
+func TestCommandListEditDropsExplanation(t *testing.T) {
+	m := newCommandListModel([]Suggestion{
+		{Command: "ls", Explanation: "Lists files"},
+		{Command: "pwd", Explanation: "Prints the working directory"},
+	}, "list files")
+
+	m = send(t, m, key("e"), key(" -la"), enter)
+
+	if m.commands[0].Explanation != "" {
+		t.Errorf("explanation = %q, want it dropped after an edit", m.commands[0].Explanation)
+	}
+	if want := "Prints the working directory"; m.commands[1].Explanation != want {
+		t.Errorf("other explanation = %q, want %q", m.commands[1].Explanation, want)
+	}
+}
+
+func TestCommandListViewShowsExplanation(t *testing.T) {
+	m := newCommandListModel([]Suggestion{
+		{Command: "ls -a", Explanation: "Lists files including hidden ones"},
+		{Command: "pwd"},
+	}, "list files")
+
+	view := m.View()
+
+	if !strings.Contains(view, "Lists files including hidden ones") {
+		t.Errorf("view does not show the explanation:\n%s", view)
+	}
+	if strings.Contains(view, "safe — \n") {
+		t.Errorf("view shows an empty explanation:\n%s", view)
+	}
+}
+
+func TestCommandListViewFitsTerminalWidth(t *testing.T) {
+	m := newCommandListModel([]Suggestion{
+		{Command: "ls", Explanation: strings.Repeat("very long explanation ", 20)},
+	}, "list files")
+
+	width := GetTerminalWidth()
+
+	rows := 0
+	for _, line := range strings.Split(m.View(), "\n") {
+		if !strings.Contains(line, "very long explanation") {
+			continue
+		}
+		rows++
+		if got := ansi.StringWidth(line); got > width {
+			t.Errorf("explanation row width = %d, want at most %d: %q", got, width, line)
+		}
+	}
+
+	if rows != 1 {
+		t.Fatalf("found %d explanation rows, want 1", rows)
 	}
 }

@@ -40,27 +40,29 @@ type ConfirmResult struct {
 }
 
 type confirmModel struct {
-	command    string
-	risk       safety.RiskLevel
-	blocked    bool
-	choices    []ConfirmChoice
-	cursor     int
-	selected   ConfirmChoice
-	refinement string
-	mode       confirmMode
-	textInput  textinput.Model
-	done       bool
+	command     string
+	explanation string
+	risk        safety.RiskLevel
+	blocked     bool
+	choices     []ConfirmChoice
+	cursor      int
+	selected    ConfirmChoice
+	refinement  string
+	mode        confirmMode
+	textInput   textinput.Model
+	done        bool
 }
 
-func newConfirmModel(command string) confirmModel {
+func newConfirmModel(suggestion Suggestion) confirmModel {
 	ti := textinput.New()
 	ti.Width = GetTerminalWidth() - 6
 
 	m := confirmModel{
-		command:   command,
-		textInput: ti,
+		command:     suggestion.Command,
+		explanation: suggestion.Explanation,
+		textInput:   ti,
 	}
-	m.assess(command)
+	m.assess(suggestion.Command)
 
 	return m
 }
@@ -145,6 +147,7 @@ func (m confirmModel) updateEditMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key.String() {
 		case "enter":
 			if edited := strings.TrimSpace(m.textInput.Value()); edited != "" {
+				m.explanation = ""
 				m.assess(edited)
 			}
 			return m.backToMenu(), nil
@@ -207,7 +210,11 @@ func (m confirmModel) View() string {
 	s := "\n"
 	s += cmdTitleStyle.Render("Generated Command") + "\n"
 	s += IndentUnder(TreeStyle.Render(TreeLastBranch)+" ", HighlightCommand(m.command)) + "\n"
-	s += fmt.Sprintf("   %s %s\n", riskEmoji, riskStyle.Render(string(m.risk)))
+	riskLine := fmt.Sprintf("   %s %s", riskEmoji, riskStyle.Render(string(m.risk)))
+	if m.explanation != "" {
+		riskLine += ExplanationStyle.Render(" — " + m.explanation)
+	}
+	s += Truncate(riskLine, GetTerminalWidth()) + "\n"
 
 	if m.blocked {
 		s += DangerStyle.Render("   This command is blocked for safety reasons.") + "\n"
@@ -243,14 +250,14 @@ func (m confirmModel) viewInput(title, help string) string {
 	return b.String()
 }
 
-func ConfirmExecutionInteractive(cmd string) ConfirmResult {
+func ConfirmExecutionInteractive(suggestion Suggestion) ConfirmResult {
 	if !IsInteractive() {
-		return ConfirmResult{Choice: ConfirmCancel, Command: cmd}
+		return ConfirmResult{Choice: ConfirmCancel, Command: suggestion.Command}
 	}
 
-	finalModel, err := tea.NewProgram(newConfirmModel(cmd)).Run()
+	finalModel, err := tea.NewProgram(newConfirmModel(suggestion)).Run()
 	if err != nil {
-		return ConfirmResult{Choice: ConfirmCancel, Command: cmd}
+		return ConfirmResult{Choice: ConfirmCancel, Command: suggestion.Command}
 	}
 
 	result := finalModel.(confirmModel)

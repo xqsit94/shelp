@@ -128,6 +128,8 @@ func runQuery(cmd *cobra.Command, query string, opts runOptions) error {
 	shell := executor.DetectShell()
 
 	client := ai.NewClient(cfg.AIURL, cfg.APIKey, cfg.Model)
+	client.Temperature = cfg.Temperature
+	client.MaxTokens = cfg.MaxTokens
 	client.Debug = debugEnabled(cmd)
 
 	// Without a terminal there is nobody to answer the confirmation prompt, so
@@ -137,19 +139,19 @@ func runQuery(cmd *cobra.Command, query string, opts runOptions) error {
 	request := ai.Request{Query: query, Shell: shell}
 
 	for {
-		commands, err := generateCommands(ctx, client, request)
+		suggestions, err := generateCommands(ctx, client, request)
 		if err != nil {
 			return err
 		}
 
 		switch {
 		case printOnly:
-			return printCommands(cmd, commands, opts.copy)
+			return printCommands(cmd, suggestions, opts.copy)
 		case opts.yes:
-			return executeWithoutConfirmation(ctx, commands, shell)
+			return executeWithoutConfirmation(ctx, suggestions, shell)
 		}
 
-		result := prompt.SelectCommands(commands, query)
+		result := prompt.SelectCommands(promptSuggestions(suggestions), query)
 
 		if result.Cancelled {
 			prompt.DisplayWarning("Execution cancelled.")
@@ -157,7 +159,7 @@ func runQuery(cmd *cobra.Command, query string, opts runOptions) error {
 		}
 
 		if result.Regenerate {
-			request.History = append(request.History, ai.Turn{Commands: commands, Feedback: result.Refinement})
+			request.History = append(request.History, ai.Turn{Commands: suggestions, Feedback: result.Refinement})
 			continue
 		}
 
@@ -165,8 +167,8 @@ func runQuery(cmd *cobra.Command, query string, opts runOptions) error {
 	}
 }
 
-func generateCommands(ctx context.Context, client *ai.Client, request ai.Request) ([]string, error) {
-	commands, err := prompt.RunWithSpinner(ctx, "Generating commands...", func(ctx context.Context) ([]string, error) {
+func generateCommands(ctx context.Context, client *ai.Client, request ai.Request) ([]ai.Suggestion, error) {
+	suggestions, err := prompt.RunWithSpinner(ctx, "Generating commands...", func(ctx context.Context) ([]ai.Suggestion, error) {
 		return client.GenerateCommands(ctx, request)
 	})
 
@@ -179,19 +181,33 @@ func generateCommands(ctx context.Context, client *ai.Client, request ai.Request
 		return nil, &ExitError{Code: 1}
 	}
 
-	if len(commands) == 0 {
+	if len(suggestions) == 0 {
 		prompt.DisplayWarning("No commands generated. The request may be unclear or potentially unsafe.")
 		return nil, &ExitError{Code: 1}
 	}
 
-	return commands, nil
+	return suggestions, nil
 }
 
-func printCommands(cmd *cobra.Command, commands []string, toClipboard bool) error {
+func promptSuggestions(suggestions []ai.Suggestion) []prompt.Suggestion {
+	items := make([]prompt.Suggestion, len(suggestions))
+	for i, suggestion := range suggestions {
+		items[i] = prompt.Suggestion(suggestion)
+	}
+	return items
+}
+
+// Explanations are deliberately left out: stdout has to stay usable in $(...)
+// and pipelines.
+func printCommands(cmd *cobra.Command, suggestions []ai.Suggestion, toClipboard bool) error {
 	out := cmd.OutOrStdout()
 	highlight := prompt.IsTerminalWriter(out)
 
-	for _, command := range commands {
+	commands := make([]string, 0, len(suggestions))
+	for _, suggestion := range suggestions {
+		command := suggestion.Command
+		commands = append(commands, command)
+
 		if safety.IsBlocked(command) {
 			fmt.Fprintf(cmd.ErrOrStderr(), "%s blocked for safety reasons, do not run: %s\n", prompt.IconWarning, prompt.Oneline(command))
 		}
@@ -211,16 +227,16 @@ func printCommands(cmd *cobra.Command, commands []string, toClipboard bool) erro
 	return nil
 }
 
-func executeWithoutConfirmation(ctx context.Context, commands []string, shell string) error {
-	prompt.DisplayCommandPlan(commands)
+func executeWithoutConfirmation(ctx context.Context, suggestions []ai.Suggestion, shell string) error {
+	prompt.DisplayCommandPlan(promptSuggestions(suggestions))
 
-	allowed := make([]string, 0, len(commands))
-	for _, command := range commands {
-		if safety.IsBlocked(command) {
-			prompt.DisplayWarning("Skipping blocked command: " + prompt.Oneline(command))
+	allowed := make([]string, 0, len(suggestions))
+	for _, suggestion := range suggestions {
+		if safety.IsBlocked(suggestion.Command) {
+			prompt.DisplayWarning("Skipping blocked command: " + prompt.Oneline(suggestion.Command))
 			continue
 		}
-		allowed = append(allowed, command)
+		allowed = append(allowed, suggestion.Command)
 	}
 
 	if len(allowed) == 0 {

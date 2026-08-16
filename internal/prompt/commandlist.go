@@ -9,10 +9,18 @@ import (
 	"github.com/xqsit94/shelp/internal/safety"
 )
 
+// Suggestion mirrors ai.Suggestion so that the prompt package stays free of
+// the AI client.
+type Suggestion struct {
+	Command     string
+	Explanation string
+}
+
 type CommandItem struct {
-	Command  string
-	Risk     safety.RiskLevel
-	Selected bool
+	Command     string
+	Explanation string
+	Risk        safety.RiskLevel
+	Selected    bool
 }
 
 type listMode int
@@ -34,13 +42,14 @@ type commandListModel struct {
 	textInput     textinput.Model
 }
 
-func newCommandListModel(commands []string, originalQuery string) commandListModel {
-	items := make([]CommandItem, len(commands))
-	for i, cmd := range commands {
+func newCommandListModel(suggestions []Suggestion, originalQuery string) commandListModel {
+	items := make([]CommandItem, len(suggestions))
+	for i, suggestion := range suggestions {
 		items[i] = CommandItem{
-			Command:  cmd,
-			Risk:     safety.AssessRisk(cmd),
-			Selected: !safety.IsBlocked(cmd),
+			Command:     suggestion.Command,
+			Explanation: suggestion.Explanation,
+			Risk:        safety.AssessRisk(suggestion.Command),
+			Selected:    !safety.IsBlocked(suggestion.Command),
 		}
 	}
 
@@ -144,6 +153,7 @@ func (m commandListModel) updateEditMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if edited := strings.TrimSpace(m.textInput.Value()); edited != "" {
 				item := &m.commands[m.cursor]
 				item.Command = edited
+				item.Explanation = ""
 				item.Risk = safety.AssessRisk(edited)
 				if safety.IsBlocked(edited) {
 					item.Selected = false
@@ -232,7 +242,10 @@ func (m commandListModel) View() string {
 			riskEmoji,
 			riskText,
 		)
-		b.WriteString(riskLine + "\n")
+		if item.Explanation != "" {
+			riskLine += ExplanationStyle.Render(" — " + item.Explanation)
+		}
+		b.WriteString(Truncate(riskLine, GetTerminalWidth()) + "\n")
 	}
 
 	b.WriteString("\n")
@@ -288,13 +301,13 @@ type CommandListResult struct {
 	Refinement       string
 }
 
-func SelectCommands(commands []string, originalQuery string) CommandListResult {
-	if len(commands) == 0 || !IsInteractive() {
+func SelectCommands(suggestions []Suggestion, originalQuery string) CommandListResult {
+	if len(suggestions) == 0 || !IsInteractive() {
 		return CommandListResult{Cancelled: true}
 	}
 
-	if len(commands) == 1 {
-		result := ConfirmExecutionInteractive(commands[0])
+	if len(suggestions) == 1 {
+		result := ConfirmExecutionInteractive(suggestions[0])
 		switch result.Choice {
 		case ConfirmExecute:
 			return CommandListResult{SelectedCommands: []string{result.Command}}
@@ -305,7 +318,7 @@ func SelectCommands(commands []string, originalQuery string) CommandListResult {
 		}
 	}
 
-	m := newCommandListModel(commands, originalQuery)
+	m := newCommandListModel(suggestions, originalQuery)
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {

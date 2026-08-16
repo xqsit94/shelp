@@ -6,6 +6,7 @@ Your AI-powered shell assistant. Convert natural language to safe, executable sh
 
 - **Natural Language Input**: Describe what you want in plain English
 - **Review Before You Run**: Pick, edit or regenerate the generated commands before anything executes
+- **One-Line Explanations**: Every command comes with a short description of what it does
 - **Risk Labels**: Every command is labelled safe/caution/danger, and catastrophic patterns are blocked
 - **Pipe Friendly**: Without a terminal shelp prints the commands instead of running them
 - **BYOK**: Bring Your Own Key - use any OpenAI-compatible API
@@ -82,9 +83,9 @@ $ shelp "find javascript files changed this week"
 
 Generated Commands (2)
 ├─ [●] find . -name "*.js" -mtime -7
-│      ● safe
+│      ● safe — Finds JavaScript files changed in the last week
 └─ [●] find . -name "*.jsx" -mtime -7
-       ● safe
+       ● safe — Finds JSX files changed in the last week
 
   2 of 2 selected
 
@@ -108,7 +109,7 @@ $ shelp "show disk usage for current directory"
 
 Generated Command
 └─ du -sh .
-   ● safe
+   ● safe — Shows the total size of this directory
 
 > Execute
   Edit
@@ -121,7 +122,12 @@ Generated Command
 `y` executes, `e` edits the command inline, `r` regenerates (optionally with a
 refinement) and `n`/`q`/`esc` cancels. Editing re-assesses the risk level: if an
 edit turns the command into a blocked one, `Execute` disappears from the menu
-and the command is deselected in the list.
+and the command is deselected in the list. Editing also drops the explanation,
+since it no longer describes the command you wrote.
+
+The explanation next to the risk level is written by the model and is only ever
+shown in the UI: `--print`, `--copy` and non-terminal runs keep stdout to the
+commands alone.
 
 Selected commands run one at a time with live output. When one fails you are
 asked whether to continue with the rest (without a terminal the run stops), and
@@ -170,6 +176,14 @@ shelp config set key
 # Update model
 shelp config set model anthropic/claude-3.5-sonnet
 
+# Optional sampling parameters (off by default)
+shelp config set temperature 0.2
+shelp config set max-tokens 512
+
+# Back to the provider defaults
+shelp config unset temperature
+shelp config unset max-tokens
+
 # Show current configuration (API key masked, env values marked)
 shelp config show
 
@@ -187,12 +201,19 @@ Environment variables override the config file:
 | `SHELP_URL` | AI API endpoint |
 | `SHELP_API_KEY` | API key |
 | `SHELP_MODEL` | Model name |
+| `SHELP_TEMPERATURE` | Sampling temperature, `0`-`2` |
+| `SHELP_MAX_TOKENS` | Response token limit, a positive integer |
 | `SHELP_CONFIG_DIR` | Config directory (default `~/.shelp`) |
 | `SHELP_DEBUG=1` | Same as `--debug` |
 
 Precedence is environment > config file. `shelp config set ...` always writes to
 the file, never to the environment, and `shelp config show` marks the values
 that came from the environment with `(from env)`.
+
+`temperature` and `max_tokens` are off by default and are then left out of the
+request entirely, because some OpenAI-compatible reasoning models reject them.
+Set them only if your provider needs them; `shelp config show` displays
+`(provider default)` while they are unset.
 
 shelp warns when the API URL uses `http://` with a non-local host, because the
 API key is then sent in cleartext.
@@ -282,6 +303,8 @@ Configuration is stored in `~/.shelp/config.json` (or `$SHELP_CONFIG_DIR`):
   "model": "anthropic/claude-3.5-sonnet"
 }
 ```
+
+`temperature` and `max_tokens` are added only once you set them.
 
 File permissions are set to `0600` (owner read/write only) for security.
 

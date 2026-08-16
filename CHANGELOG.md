@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Each generated command now comes with a one-line explanation of what it does,
+  shown next to the risk level in the command list, the single-command menu, the
+  `--yes` plan and `shelp config test`. `--print`, `--copy` and non-terminal runs
+  still print commands only, and editing a command drops its explanation.
+- Optional sampling parameters: `shelp config set temperature <0-2>` and
+  `shelp config set max-tokens <n>` (cleared again with `shelp config unset ...`),
+  overridable with `SHELP_TEMPERATURE` and `SHELP_MAX_TOKENS`. Both are unset by
+  default and are then omitted from the request, because some OpenAI-compatible
+  reasoning models reject them.
 - `-p`/`--print` prints the generated commands to stdout, one per line, without
   running them; plain text when stdout is redirected, syntax-highlighted on a
   terminal.

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -24,6 +25,7 @@ func ConfigCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(configSetCmd())
+	cmd.AddCommand(configUnsetCmd())
 	cmd.AddCommand(configShowCmd())
 	cmd.AddCommand(configTestCmd())
 	cmd.AddCommand(configResetCmd())
@@ -35,14 +37,56 @@ func configSetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set",
 		Short: "Set configuration values",
-		Long:  "Set configuration values for AI provider URL, API key, or model.",
+		Long:  "Set configuration values for AI provider URL, API key, model, or sampling parameters.",
 	}
 
 	cmd.AddCommand(configSetURLCmd())
 	cmd.AddCommand(configSetKeyCmd())
 	cmd.AddCommand(configSetModelCmd())
+	cmd.AddCommand(configSetTemperatureCmd())
+	cmd.AddCommand(configSetMaxTokensCmd())
 
 	return cmd
+}
+
+func configUnsetCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "unset",
+		Short: "Clear optional configuration values",
+		Long:  "Clear optional configuration values so the provider defaults are used again.",
+	}
+
+	cmd.AddCommand(configUnsetValueCmd("temperature", "Temperature", "Clear the sampling temperature", func(cfg *config.Config) {
+		cfg.Temperature = nil
+	}))
+	cmd.AddCommand(configUnsetValueCmd("max-tokens", "Max tokens", "Clear the response token limit", func(cfg *config.Config) {
+		cfg.MaxTokens = nil
+	}))
+
+	return cmd
+}
+
+func configUnsetValueCmd(name, label, short string, clear func(*config.Config)) *cobra.Command {
+	return &cobra.Command{
+		Use:   name,
+		Short: short,
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.LoadFile()
+			if err != nil {
+				return err
+			}
+
+			clear(cfg)
+
+			if err := config.Save(cfg); err != nil {
+				return err
+			}
+
+			prompt.DisplaySuccess(label + " cleared, the provider default will be used")
+			return nil
+		},
+	}
 }
 
 func configSetURLCmd() *cobra.Command {
@@ -127,6 +171,64 @@ func configSetModelCmd() *cobra.Command {
 	}
 }
 
+func configSetTemperatureCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "temperature [value]",
+		Short: "Set the sampling temperature",
+		Long:  "Set the sampling temperature between 0 and 2. Not sent to the provider unless set.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			temperature, err := config.ParseTemperature(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid temperature: %v", err)
+			}
+
+			cfg, err := config.LoadFile()
+			if err != nil {
+				return err
+			}
+
+			cfg.Temperature = &temperature
+
+			if err := config.Save(cfg); err != nil {
+				return err
+			}
+
+			prompt.DisplaySuccess("Temperature updated successfully")
+			return nil
+		},
+	}
+}
+
+func configSetMaxTokensCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "max-tokens [value]",
+		Short: "Set the response token limit",
+		Long:  "Set the maximum number of tokens in the response. Not sent to the provider unless set.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			maxTokens, err := config.ParseMaxTokens(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid max tokens: %v", err)
+			}
+
+			cfg, err := config.LoadFile()
+			if err != nil {
+				return err
+			}
+
+			cfg.MaxTokens = &maxTokens
+
+			if err := config.Save(cfg); err != nil {
+				return err
+			}
+
+			prompt.DisplaySuccess("Max tokens updated successfully")
+			return nil
+		},
+	}
+}
+
 func configShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show",
@@ -146,6 +248,8 @@ func configShowCmd() *cobra.Command {
 				configValue(cfg.AIURL, cfg.FromEnv.AIURL),
 				configValue(cfg.MaskedAPIKey(), cfg.FromEnv.APIKey),
 				configValue(cfg.Model, cfg.FromEnv.Model),
+				optionalConfigValue(temperatureValue(cfg), cfg.FromEnv.Temperature),
+				optionalConfigValue(maxTokensValue(cfg), cfg.FromEnv.MaxTokens),
 			)
 
 			return nil
@@ -163,7 +267,33 @@ func configValue(value string, fromEnv bool) string {
 	return value
 }
 
-func displayConfigTable(aiURL, apiKey, model string) {
+// Sampling parameters are omitted from the request when unset, so an empty
+// value means the provider decides.
+func optionalConfigValue(value string, fromEnv bool) string {
+	if value == "" {
+		return "(provider default)"
+	}
+	if fromEnv {
+		return value + " (from env)"
+	}
+	return value
+}
+
+func temperatureValue(cfg *config.Config) string {
+	if cfg.Temperature == nil {
+		return ""
+	}
+	return strconv.FormatFloat(*cfg.Temperature, 'g', -1, 64)
+}
+
+func maxTokensValue(cfg *config.Config) string {
+	if cfg.MaxTokens == nil {
+		return ""
+	}
+	return strconv.Itoa(*cfg.MaxTokens)
+}
+
+func displayConfigTable(aiURL, apiKey, model, temperature, maxTokens string) {
 	t := table.New().
 		Border(lipgloss.RoundedBorder()).
 		BorderStyle(prompt.TableBorderStyle).
@@ -176,7 +306,9 @@ func displayConfigTable(aiURL, apiKey, model string) {
 		Headers("Setting", "Value").
 		Row("AI URL", aiURL).
 		Row("API Key", apiKey).
-		Row("Model", model)
+		Row("Model", model).
+		Row("Temperature", temperature).
+		Row("Max tokens", maxTokens)
 
 	title := prompt.TitleBoldStyle.
 		Foreground(prompt.ColorPrimary).
@@ -211,12 +343,14 @@ func testConnection(cmd *cobra.Command, cfg *config.Config) error {
 	}
 
 	client := ai.NewClient(cfg.AIURL, cfg.APIKey, cfg.Model)
+	client.Temperature = cfg.Temperature
+	client.MaxTokens = cfg.MaxTokens
 	client.Debug = debugEnabled(cmd)
 
 	request := ai.Request{Query: connectionTestQuery, Shell: executor.DetectShell()}
 
 	start := time.Now()
-	commands, err := prompt.RunWithSpinner(cmd.Context(), "Testing connection...", func(ctx context.Context) ([]string, error) {
+	suggestions, err := prompt.RunWithSpinner(cmd.Context(), "Testing connection...", func(ctx context.Context) ([]ai.Suggestion, error) {
 		return client.GenerateCommands(ctx, request)
 	})
 	elapsed := time.Since(start).Round(time.Millisecond)
@@ -231,10 +365,13 @@ func testConnection(cmd *cobra.Command, cfg *config.Config) error {
 	}
 
 	prompt.DisplaySuccess(fmt.Sprintf("Connected to %s as %s — %d command(s) in %s",
-		cfg.AIURL, cfg.Model, len(commands), elapsed))
+		cfg.AIURL, cfg.Model, len(suggestions), elapsed))
 
-	if len(commands) > 0 {
-		fmt.Println(prompt.IndentUnder("  "+prompt.TreeStyle.Render(prompt.TreeLastBranch)+" ", prompt.HighlightCommand(commands[0])))
+	if len(suggestions) > 0 {
+		fmt.Println(prompt.IndentUnder("  "+prompt.TreeStyle.Render(prompt.TreeLastBranch)+" ", prompt.HighlightCommand(suggestions[0].Command)))
+		if explanation := suggestions[0].Explanation; explanation != "" {
+			fmt.Println(prompt.Truncate("     "+prompt.ExplanationStyle.Render(explanation), prompt.GetTerminalWidth()))
+		}
 	}
 
 	return nil

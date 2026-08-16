@@ -67,6 +67,8 @@ func isolate(t *testing.T) string {
 	t.Setenv(EnvURL, "")
 	t.Setenv(EnvAPIKey, "")
 	t.Setenv(EnvModel, "")
+	t.Setenv(EnvTemperature, "")
+	t.Setenv(EnvMaxTokens, "")
 
 	return dir
 }
@@ -184,6 +186,114 @@ func TestLoadEnvOnlyIsConfigured(t *testing.T) {
 	}
 	if cfg.FromEnv != (Sources{AIURL: true, APIKey: true, Model: true}) {
 		t.Errorf("FromEnv = %+v, want all true", cfg.FromEnv)
+	}
+}
+
+func TestSaveLoadSamplingParameters(t *testing.T) {
+	isolate(t)
+
+	temperature, maxTokens := 0.2, 256
+	if err := Save(&Config{Temperature: &temperature, MaxTokens: &maxTokens}); err != nil {
+		t.Fatalf("Save() returned error: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Temperature == nil || *cfg.Temperature != temperature {
+		t.Errorf("Temperature = %v, want %v", cfg.Temperature, temperature)
+	}
+	if cfg.MaxTokens == nil || *cfg.MaxTokens != maxTokens {
+		t.Errorf("MaxTokens = %v, want %v", cfg.MaxTokens, maxTokens)
+	}
+	if cfg.FromEnv != (Sources{}) {
+		t.Errorf("FromEnv = %+v, want none", cfg.FromEnv)
+	}
+}
+
+func TestSaveOmitsUnsetSamplingParameters(t *testing.T) {
+	dir := isolate(t)
+
+	if err := Save(&Config{AIURL: "https://x"}); err != nil {
+		t.Fatalf("Save() returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, paths.ConfigFileName))
+	if err != nil {
+		t.Fatalf("read config file: %v", err)
+	}
+
+	for _, field := range []string{"temperature", "max_tokens"} {
+		if strings.Contains(string(data), field) {
+			t.Errorf("config file contains %q, want it omitted:\n%s", field, data)
+		}
+	}
+}
+
+func TestLoadSamplingEnvOverrides(t *testing.T) {
+	isolate(t)
+
+	t.Setenv(EnvTemperature, "0.2")
+	t.Setenv(EnvMaxTokens, "  256  ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Temperature == nil || *cfg.Temperature != 0.2 {
+		t.Errorf("Temperature = %v, want 0.2", cfg.Temperature)
+	}
+	if cfg.MaxTokens == nil || *cfg.MaxTokens != 256 {
+		t.Errorf("MaxTokens = %v, want 256", cfg.MaxTokens)
+	}
+	if want := (Sources{Temperature: true, MaxTokens: true}); cfg.FromEnv != want {
+		t.Errorf("FromEnv = %+v, want %+v", cfg.FromEnv, want)
+	}
+}
+
+func TestLoadRejectsInvalidSamplingEnv(t *testing.T) {
+	tests := []struct {
+		name  string
+		env   string
+		value string
+	}{
+		{"temperature not a number", EnvTemperature, "hot"},
+		{"temperature below range", EnvTemperature, "-0.1"},
+		{"temperature above range", EnvTemperature, "2.5"},
+		{"temperature nan", EnvTemperature, "NaN"},
+		{"max tokens not a number", EnvMaxTokens, "many"},
+		{"max tokens zero", EnvMaxTokens, "0"},
+		{"max tokens negative", EnvMaxTokens, "-1"},
+		{"max tokens fractional", EnvMaxTokens, "1.5"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isolate(t)
+			t.Setenv(tt.env, tt.value)
+
+			cfg, err := Load()
+			if err == nil {
+				t.Fatalf("Load() = %+v, want an error for %s=%q", cfg, tt.env, tt.value)
+			}
+			if !strings.Contains(err.Error(), tt.env) {
+				t.Errorf("error = %q, want it to name %s", err, tt.env)
+			}
+		})
+	}
+}
+
+func TestLoadAcceptsSamplingRangeBounds(t *testing.T) {
+	for _, value := range []string{"0", "2", "1.25"} {
+		t.Run(value, func(t *testing.T) {
+			isolate(t)
+			t.Setenv(EnvTemperature, value)
+
+			if _, err := Load(); err != nil {
+				t.Errorf("Load() with %s=%q returned error: %v", EnvTemperature, value, err)
+			}
+		})
 	}
 }
 
