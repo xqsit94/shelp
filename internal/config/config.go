@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -19,6 +20,9 @@ const (
 	EnvModel       = "SHELP_MODEL"
 	EnvTemperature = "SHELP_TEMPERATURE"
 	EnvMaxTokens   = "SHELP_MAX_TOKENS"
+	EnvProfile     = "SHELP_PROFILE"
+
+	DefaultProfile = "default"
 )
 
 // Sources records which fields came from the environment rather than the file.
@@ -30,22 +34,57 @@ type Sources struct {
 	MaxTokens   bool
 }
 
-// Temperature and MaxTokens are optional: when unset nothing is sent to the
-// provider, because some OpenAI-compatible models reject the fields outright.
-type Config struct {
+// Profile is one named provider as it is stored on disk.
+type Profile struct {
 	AIURL       string   `json:"ai_url"`
 	APIKey      string   `json:"api_key"`
 	Model       string   `json:"model"`
 	Temperature *float64 `json:"temperature,omitempty"`
 	MaxTokens   *int     `json:"max_tokens,omitempty"`
-
-	FromEnv Sources `json:"-"`
 }
 
-// Load reads the config file and applies the SHELP_* environment overrides on
-// top of it.
+// File is the config file: a set of named profiles plus the one that is used
+// when no profile is requested.
+type File struct {
+	ActiveProfile string             `json:"active_profile"`
+	Profiles      map[string]Profile `json:"profiles"`
+
+	// present separates "no config file yet" from "profile missing from the
+	// file", so an env-only first run does not fail on an unknown profile.
+	present bool
+}
+
+// Config is the effective configuration of one run: the resolved profile with
+// the environment overrides applied.
+//
+// Temperature and MaxTokens are optional: when unset nothing is sent to the
+// provider, because some OpenAI-compatible models reject the fields outright.
+type Config struct {
+	Profile     string
+	AIURL       string
+	APIKey      string
+	Model       string
+	Temperature *float64
+	MaxTokens   *int
+
+	FromEnv Sources
+}
+
+// Load reads the profile selected by SHELP_PROFILE or the active profile and
+// applies the SHELP_* environment overrides on top of it.
 func Load() (*Config, error) {
-	cfg, err := LoadFile()
+	return LoadProfile("")
+}
+
+// LoadProfile reads the named profile, falling back to the resolution order
+// when name is empty.
+func LoadProfile(name string) (*Config, error) {
+	file, err := LoadFile()
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := file.Config(name)
 	if err != nil {
 		return nil, err
 	}
@@ -59,23 +98,151 @@ func Load() (*Config, error) {
 
 // LoadFile reads the config file only, so that writes never persist values that
 // came from the environment.
-func LoadFile() (*Config, error) {
-	configPath := paths.GetConfigPath()
-
-	data, err := os.ReadFile(configPath)
+func LoadFile() (*File, error) {
+	data, err := os.ReadFile(paths.GetConfigPath())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &Config{}, nil
+			return &File{Profiles: map[string]Profile{}}, nil
 		}
 		return nil, fmt.Errorf("failed to read config file: %v", err)
 	}
 
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	// The v1 schema stored a single unnamed profile at the top level.
+	var stored struct {
+		ActiveProfile string             `json:"active_profile"`
+		Profiles      map[string]Profile `json:"profiles"`
+		Profile
+	}
+	if err := json.Unmarshal(data, &stored); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %v", err)
 	}
 
-	return &cfg, nil
+	file := &File{ActiveProfile: stored.ActiveProfile, Profiles: stored.Profiles, present: true}
+	if file.Profiles == nil {
+		file.Profiles = map[string]Profile{}
+		if stored.Profile != (Profile{}) {
+			file.Profiles[DefaultProfile] = stored.Profile
+		}
+	}
+
+	if _, ok := file.Profiles[file.ActiveProfile]; !ok && len(file.Profiles) > 0 {
+		file.ActiveProfile = DefaultProfile
+		if _, ok := file.Profiles[DefaultProfile]; !ok {
+			file.ActiveProfile = file.Names()[0]
+		}
+	}
+
+	return file, nil
+}
+
+func SaveFile(file *File) error {
+	if err := paths.EnsureConfigDir(); err != nil {
+		return fmt.Errorf("failed to create config directory: %v", err)
+	}
+
+	out := *file
+	if out.Profiles == nil {
+		out.Profiles = map[string]Profile{}
+	}
+
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to serialize config: %v", err)
+	}
+
+	if err := os.WriteFile(paths.GetConfigPath(), data, 0600); err != nil {
+		return fmt.Errorf("failed to write config file: %v", err)
+	}
+
+	return nil
+}
+
+func (f *File) Get(name string) (Profile, bool) {
+	profile, ok := f.Profiles[name]
+	return profile, ok
+}
+
+// Set stores a profile, making it active when the file has no active profile
+// yet, so the first profile created is the one runs use.
+func (f *File) Set(name string, profile Profile) {
+	if f.Profiles == nil {
+		f.Profiles = map[string]Profile{}
+	}
+	f.Profiles[name] = profile
+
+	if f.ActiveProfile == "" {
+		f.ActiveProfile = name
+	}
+}
+
+func (f *File) Delete(name string) {
+	delete(f.Profiles, name)
+}
+
+func (f *File) Names() []string {
+	names := make([]string, 0, len(f.Profiles))
+	for name := range f.Profiles {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	return names
+}
+
+// Config returns the effective configuration of the requested profile, without
+// the environment overrides.
+func (f *File) Config(requested string) (*Config, error) {
+	name := f.ResolveName(requested)
+
+	profile, ok := f.Get(name)
+	if !ok && f.present && len(f.Profiles) > 0 {
+		return nil, fmt.Errorf("unknown profile %q (available: %s)", name, strings.Join(f.Names(), ", "))
+	}
+
+	return &Config{
+		Profile:     name,
+		AIURL:       profile.AIURL,
+		APIKey:      profile.APIKey,
+		Model:       profile.Model,
+		Temperature: profile.Temperature,
+		MaxTokens:   profile.MaxTokens,
+	}, nil
+}
+
+// ResolveName applies the profile precedence: explicit request, then
+// SHELP_PROFILE, then the active profile, then "default".
+func (f *File) ResolveName(requested string) string {
+	if name := strings.TrimSpace(requested); name != "" {
+		return name
+	}
+	if name := strings.TrimSpace(os.Getenv(EnvProfile)); name != "" {
+		return name
+	}
+	if f.ActiveProfile != "" {
+		return f.ActiveProfile
+	}
+
+	return DefaultProfile
+}
+
+// UpdateProfile applies edit to the resolved profile and writes the file back,
+// creating the profile when it does not exist yet. It returns the name written.
+func UpdateProfile(requested string, edit func(*Profile)) (string, error) {
+	file, err := LoadFile()
+	if err != nil {
+		return "", err
+	}
+
+	name := file.ResolveName(requested)
+	profile, _ := file.Get(name)
+	edit(&profile)
+	file.Set(name, profile)
+
+	if err := SaveFile(file); err != nil {
+		return "", err
+	}
+
+	return name, nil
 }
 
 func applyEnv(cfg *Config) error {
@@ -134,37 +301,23 @@ func ParseMaxTokens(value string) (int, error) {
 	return maxTokens, nil
 }
 
-func Save(cfg *Config) error {
-	if err := paths.EnsureConfigDir(); err != nil {
-		return fmt.Errorf("failed to create config directory: %v", err)
-	}
-
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to serialize config: %v", err)
-	}
-
-	configPath := paths.GetConfigPath()
-	if err := os.WriteFile(configPath, data, 0600); err != nil {
-		return fmt.Errorf("failed to write config file: %v", err)
-	}
-
-	return nil
-}
-
 func (c *Config) IsConfigured() bool {
 	return c.AIURL != "" && c.APIKey != "" && c.Model != ""
 }
 
 func (c *Config) MaskedAPIKey() string {
-	n := len(c.APIKey)
+	return MaskAPIKey(c.APIKey)
+}
+
+func MaskAPIKey(apiKey string) string {
+	n := len(apiKey)
 	switch {
 	case n < 8:
 		return strings.Repeat("*", n)
 	case n < 16:
-		return strings.Repeat("*", 4) + c.APIKey[n-4:]
+		return strings.Repeat("*", 4) + apiKey[n-4:]
 	default:
-		return c.APIKey[:4] + strings.Repeat("*", n-8) + c.APIKey[n-4:]
+		return apiKey[:4] + strings.Repeat("*", n-8) + apiKey[n-4:]
 	}
 }
 

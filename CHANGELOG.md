@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Query history: every answered query is appended to
+  `~/.shelp/history.jsonl` (time, query, commands, whether they ran, exit code
+  and profile, mode `0600`, newest 1000 entries kept). `shelp history` lists the
+  most recent queries, `shelp history run <n>` runs one of them again through
+  the normal flow, and `shelp history clear` deletes the file. Recording is
+  skipped with `--no-history` or `SHELP_NO_HISTORY=1`.
+- Named provider profiles: the config file now holds `active_profile` and a
+  `profiles` map, managed with `shelp config profile list|use|add|remove|rename`
+  and selected per run with `--profile <name>` or `SHELP_PROFILE`. Single-profile
+  files from earlier versions are read as the `default` profile and rewritten in
+  the new format on the next write.
 - Each generated command now comes with a one-line explanation of what it does,
   shown next to the risk level in the command list, the single-command menu, the
   `--yes` plan and `shelp config test`. `--print`, `--copy` and non-terminal runs

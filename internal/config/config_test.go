@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,8 +70,25 @@ func isolate(t *testing.T) string {
 	t.Setenv(EnvModel, "")
 	t.Setenv(EnvTemperature, "")
 	t.Setenv(EnvMaxTokens, "")
+	t.Setenv(EnvProfile, "")
 
 	return dir
+}
+
+func saveProfiles(t *testing.T, active string, profiles map[string]Profile) {
+	t.Helper()
+
+	if err := SaveFile(&File{ActiveProfile: active, Profiles: profiles}); err != nil {
+		t.Fatalf("SaveFile() returned error: %v", err)
+	}
+}
+
+func writeConfigFile(t *testing.T, dir, content string) {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(dir, paths.ConfigFileName), []byte(content), 0600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
 }
 
 func TestLoadMissingFile(t *testing.T) {
@@ -80,23 +98,20 @@ func TestLoadMissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() returned error: %v", err)
 	}
-	if *cfg != (Config{}) {
-		t.Errorf("Load() = %+v, want zero config", *cfg)
+	if want := (Config{Profile: DefaultProfile}); *cfg != want {
+		t.Errorf("Load() = %+v, want %+v", *cfg, want)
 	}
 }
 
-func TestSaveLoadResetRoundTrip(t *testing.T) {
+func TestSaveFileLoadResetRoundTrip(t *testing.T) {
 	dir := isolate(t)
 
-	want := &Config{
+	want := Profile{
 		AIURL:  "https://openrouter.ai/api/v1/chat/completions",
 		APIKey: "sk-or-v1-secret",
 		Model:  "anthropic/claude-3.5-sonnet",
 	}
-
-	if err := Save(want); err != nil {
-		t.Fatalf("Save() returned error: %v", err)
-	}
+	saveProfiles(t, DefaultProfile, map[string]Profile{DefaultProfile: want})
 
 	configPath := filepath.Join(dir, paths.ConfigFileName)
 	info, err := os.Stat(configPath)
@@ -111,8 +126,8 @@ func TestSaveLoadResetRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() returned error: %v", err)
 	}
-	if *got != *want {
-		t.Errorf("Load() = %+v, want %+v", *got, *want)
+	if wantCfg := (Config{Profile: DefaultProfile, AIURL: want.AIURL, APIKey: want.APIKey, Model: want.Model}); *got != wantCfg {
+		t.Errorf("Load() = %+v, want %+v", *got, wantCfg)
 	}
 
 	if err := Reset(); err != nil {
@@ -130,18 +145,212 @@ func TestSaveLoadResetRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() after Reset() returned error: %v", err)
 	}
-	if *got != (Config{}) {
-		t.Errorf("Load() after Reset() = %+v, want zero config", *got)
+	if want := (Config{Profile: DefaultProfile}); *got != want {
+		t.Errorf("Load() after Reset() = %+v, want %+v", *got, want)
+	}
+}
+
+func TestLoadFileMigratesV1Schema(t *testing.T) {
+	dir := isolate(t)
+
+	writeConfigFile(t, dir, `{"ai_url":"https://file","api_key":"file-key","model":"file-model","temperature":0.2}`)
+
+	file, err := LoadFile()
+	if err != nil {
+		t.Fatalf("LoadFile() returned error: %v", err)
+	}
+	if file.ActiveProfile != DefaultProfile {
+		t.Errorf("ActiveProfile = %q, want %q", file.ActiveProfile, DefaultProfile)
+	}
+
+	profile, ok := file.Get(DefaultProfile)
+	if !ok {
+		t.Fatalf("profiles = %v, want the v1 values under %q", file.Profiles, DefaultProfile)
+	}
+	if profile.AIURL != "https://file" || profile.APIKey != "file-key" || profile.Model != "file-model" {
+		t.Errorf("profile = %+v, want the v1 values", profile)
+	}
+	if profile.Temperature == nil || *profile.Temperature != 0.2 {
+		t.Errorf("Temperature = %v, want 0.2", profile.Temperature)
+	}
+
+	// The next write upgrades the file to the v2 schema.
+	if _, err := UpdateProfile("", func(profile *Profile) { profile.Model = "new-model" }); err != nil {
+		t.Fatalf("UpdateProfile() returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, paths.ConfigFileName))
+	if err != nil {
+		t.Fatalf("read config file: %v", err)
+	}
+
+	var stored File
+	if err := json.Unmarshal(data, &stored); err != nil {
+		t.Fatalf("parse config file: %v", err)
+	}
+	if stored.ActiveProfile != DefaultProfile {
+		t.Errorf("active_profile = %q, want %q", stored.ActiveProfile, DefaultProfile)
+	}
+	if got := stored.Profiles[DefaultProfile].Model; got != "new-model" {
+		t.Errorf("model = %q, want %q", got, "new-model")
+	}
+	if got := stored.Profiles[DefaultProfile].AIURL; got != "https://file" {
+		t.Errorf("ai_url = %q, want it kept", got)
+	}
+}
+
+func TestLoadProfilePrecedence(t *testing.T) {
+	tests := []struct {
+		name      string
+		requested string
+		env       string
+		want      string
+		wantModel string
+	}{
+		{"requested wins", "work", "home", "work", "work-model"},
+		{"env over active", "", "home", "home", "home-model"},
+		{"active over default", "", "", "personal", "personal-model"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isolate(t)
+			saveProfiles(t, "personal", map[string]Profile{
+				"work":     {AIURL: "https://work", APIKey: "k", Model: "work-model"},
+				"home":     {AIURL: "https://home", APIKey: "k", Model: "home-model"},
+				"personal": {AIURL: "https://personal", APIKey: "k", Model: "personal-model"},
+			})
+			t.Setenv(EnvProfile, tt.env)
+
+			cfg, err := LoadProfile(tt.requested)
+			if err != nil {
+				t.Fatalf("LoadProfile(%q) returned error: %v", tt.requested, err)
+			}
+			if cfg.Profile != tt.want {
+				t.Errorf("Profile = %q, want %q", cfg.Profile, tt.want)
+			}
+			if cfg.Model != tt.wantModel {
+				t.Errorf("Model = %q, want %q", cfg.Model, tt.wantModel)
+			}
+		})
+	}
+}
+
+func TestLoadProfileDefaultsWithoutActiveProfile(t *testing.T) {
+	isolate(t)
+	saveProfiles(t, "", map[string]Profile{DefaultProfile: {AIURL: "https://x", APIKey: "k", Model: "m"}})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Profile != DefaultProfile {
+		t.Errorf("Profile = %q, want %q", cfg.Profile, DefaultProfile)
+	}
+}
+
+func TestLoadUnknownProfile(t *testing.T) {
+	isolate(t)
+	saveProfiles(t, "work", map[string]Profile{
+		"work": {AIURL: "https://work", APIKey: "k", Model: "m"},
+		"home": {AIURL: "https://home", APIKey: "k", Model: "m"},
+	})
+
+	_, err := LoadProfile("missing")
+	if err == nil {
+		t.Fatal("LoadProfile() returned no error for an unknown profile")
+	}
+	if want := `unknown profile "missing" (available: home, work)`; err.Error() != want {
+		t.Errorf("error = %q, want %q", err, want)
+	}
+}
+
+func TestLoadUnknownProfileWithoutConfigFile(t *testing.T) {
+	isolate(t)
+	t.Setenv(EnvURL, "https://env")
+	t.Setenv(EnvAPIKey, "env-key")
+	t.Setenv(EnvModel, "env-model")
+
+	cfg, err := LoadProfile("work")
+	if err != nil {
+		t.Fatalf("LoadProfile() returned error: %v", err)
+	}
+	if !cfg.IsConfigured() {
+		t.Errorf("IsConfigured() = false for env-only config %+v", *cfg)
+	}
+	if cfg.Profile != "work" {
+		t.Errorf("Profile = %q, want %q", cfg.Profile, "work")
+	}
+}
+
+func TestUpdateProfileWritesResolvedProfileOnly(t *testing.T) {
+	isolate(t)
+	saveProfiles(t, "work", map[string]Profile{
+		"work":     {AIURL: "https://work", APIKey: "work-key", Model: "work-model"},
+		"personal": {AIURL: "https://personal", APIKey: "personal-key", Model: "personal-model"},
+	})
+	t.Setenv(EnvModel, "env-model")
+
+	name, err := UpdateProfile("", func(profile *Profile) { profile.Model = "next-model" })
+	if err != nil {
+		t.Fatalf("UpdateProfile() returned error: %v", err)
+	}
+	if name != "work" {
+		t.Errorf("UpdateProfile() = %q, want %q", name, "work")
+	}
+
+	file, err := LoadFile()
+	if err != nil {
+		t.Fatalf("LoadFile() returned error: %v", err)
+	}
+	if got := file.Profiles["work"].Model; got != "next-model" {
+		t.Errorf("work model = %q, want %q", got, "next-model")
+	}
+	if got := file.Profiles["personal"].Model; got != "personal-model" {
+		t.Errorf("personal model = %q, want it untouched", got)
+	}
+}
+
+func TestUpdateProfileCreatesFirstProfileActive(t *testing.T) {
+	isolate(t)
+
+	name, err := UpdateProfile("work", func(profile *Profile) { profile.Model = "work-model" })
+	if err != nil {
+		t.Fatalf("UpdateProfile() returned error: %v", err)
+	}
+	if name != "work" {
+		t.Errorf("UpdateProfile() = %q, want %q", name, "work")
+	}
+
+	file, err := LoadFile()
+	if err != nil {
+		t.Fatalf("LoadFile() returned error: %v", err)
+	}
+	if file.ActiveProfile != "work" {
+		t.Errorf("ActiveProfile = %q, want %q", file.ActiveProfile, "work")
+	}
+
+	if _, err := UpdateProfile("side", func(profile *Profile) { profile.Model = "side-model" }); err != nil {
+		t.Fatalf("UpdateProfile() returned error: %v", err)
+	}
+
+	file, err = LoadFile()
+	if err != nil {
+		t.Fatalf("LoadFile() returned error: %v", err)
+	}
+	if file.ActiveProfile != "work" {
+		t.Errorf("ActiveProfile = %q, want it unchanged", file.ActiveProfile)
+	}
+	if want := []string{"side", "work"}; strings.Join(file.Names(), ",") != strings.Join(want, ",") {
+		t.Errorf("Names() = %v, want %v", file.Names(), want)
 	}
 }
 
 func TestLoadEnvOverrides(t *testing.T) {
 	isolate(t)
 
-	file := &Config{AIURL: "https://file", APIKey: "file-key", Model: "file-model"}
-	if err := Save(file); err != nil {
-		t.Fatalf("Save() returned error: %v", err)
-	}
+	stored := Profile{AIURL: "https://file", APIKey: "file-key", Model: "file-model"}
+	saveProfiles(t, DefaultProfile, map[string]Profile{DefaultProfile: stored})
 
 	t.Setenv(EnvURL, "https://env")
 	t.Setenv(EnvModel, "  env-model  ")
@@ -152,6 +361,7 @@ func TestLoadEnvOverrides(t *testing.T) {
 	}
 
 	want := Config{
+		Profile: DefaultProfile,
 		AIURL:   "https://env",
 		APIKey:  "file-key",
 		Model:   "env-model",
@@ -161,12 +371,12 @@ func TestLoadEnvOverrides(t *testing.T) {
 		t.Errorf("Load() = %+v, want %+v", *cfg, want)
 	}
 
-	onDisk, err := LoadFile()
+	file, err := LoadFile()
 	if err != nil {
 		t.Fatalf("LoadFile() returned error: %v", err)
 	}
-	if *onDisk != *file {
-		t.Errorf("LoadFile() = %+v, want %+v", *onDisk, *file)
+	if got := file.Profiles[DefaultProfile]; got != stored {
+		t.Errorf("LoadFile() profile = %+v, want %+v", got, stored)
 	}
 }
 
@@ -193,9 +403,9 @@ func TestSaveLoadSamplingParameters(t *testing.T) {
 	isolate(t)
 
 	temperature, maxTokens := 0.2, 256
-	if err := Save(&Config{Temperature: &temperature, MaxTokens: &maxTokens}); err != nil {
-		t.Fatalf("Save() returned error: %v", err)
-	}
+	saveProfiles(t, DefaultProfile, map[string]Profile{
+		DefaultProfile: {Temperature: &temperature, MaxTokens: &maxTokens},
+	})
 
 	cfg, err := Load()
 	if err != nil {
@@ -212,12 +422,10 @@ func TestSaveLoadSamplingParameters(t *testing.T) {
 	}
 }
 
-func TestSaveOmitsUnsetSamplingParameters(t *testing.T) {
+func TestSaveFileOmitsUnsetSamplingParameters(t *testing.T) {
 	dir := isolate(t)
 
-	if err := Save(&Config{AIURL: "https://x"}); err != nil {
-		t.Fatalf("Save() returned error: %v", err)
-	}
+	saveProfiles(t, DefaultProfile, map[string]Profile{DefaultProfile: {AIURL: "https://x"}})
 
 	data, err := os.ReadFile(filepath.Join(dir, paths.ConfigFileName))
 	if err != nil {

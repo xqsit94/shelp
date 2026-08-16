@@ -53,17 +53,23 @@ func fakeProviderContent(t *testing.T, content string, bodies chan<- map[string]
 }
 
 // configureEnv points shelp at the fake provider and clears the remaining
-// SHELP_* variables so ambient values cannot leak into a test.
-func configureEnv(t *testing.T, server *httptest.Server) {
+// SHELP_* variables so ambient values cannot leak into a test. It returns the
+// scratch config directory.
+func configureEnv(t *testing.T, server *httptest.Server) string {
 	t.Helper()
 
-	t.Setenv("SHELP_CONFIG_DIR", t.TempDir())
+	dir := t.TempDir()
+	t.Setenv("SHELP_CONFIG_DIR", dir)
 	t.Setenv("SHELP_URL", server.URL)
 	t.Setenv("SHELP_API_KEY", "test-key")
 	t.Setenv("SHELP_MODEL", "test-model")
 	t.Setenv("SHELP_TEMPERATURE", "")
 	t.Setenv("SHELP_MAX_TOKENS", "")
 	t.Setenv("SHELP_DEBUG", "")
+	t.Setenv("SHELP_PROFILE", "")
+	t.Setenv("SHELP_NO_HISTORY", "")
+
+	return dir
 }
 
 func runRoot(t *testing.T, server *httptest.Server, args ...string) (string, string, error) {

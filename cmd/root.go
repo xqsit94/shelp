@@ -102,16 +102,19 @@ Examples:
 	cmd.Flags().BoolVarP(&opts.yes, "yes", "y", false, "run the generated commands without confirmation")
 	cmd.Flags().BoolVarP(&opts.copy, "copy", "c", false, "print the generated commands and copy them to the clipboard")
 	cmd.PersistentFlags().Bool("debug", false, "print AI requests and responses to stderr")
+	cmd.PersistentFlags().String("profile", "", "provider profile to use")
+	cmd.PersistentFlags().Bool("no-history", false, "do not record the query in the history")
 
 	cmd.AddCommand(ConfigCmd())
+	cmd.AddCommand(HistoryCmd())
 
 	return cmd
 }
 
-func runQuery(cmd *cobra.Command, query string, opts runOptions) error {
+func runQuery(cmd *cobra.Command, query string, opts runOptions) (err error) {
 	ctx := cmd.Context()
 
-	cfg, err := config.Load()
+	cfg, err := config.LoadProfile(profileName(cmd))
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %v", err)
 	}
@@ -132,9 +135,8 @@ func runQuery(cmd *cobra.Command, query string, opts runOptions) error {
 	client.MaxTokens = cfg.MaxTokens
 	client.Debug = debugEnabled(cmd)
 
-	// Without a terminal there is nobody to answer the confirmation prompt, so
-	// printing the commands is the only useful thing left to do.
-	printOnly := opts.print || opts.copy || (!opts.yes && !prompt.IsInteractive())
+	var outcome runOutcome
+	defer func() { recordHistory(cmd, query, cfg.Profile, outcome, err) }()
 
 	request := ai.Request{Query: query, Shell: shell}
 
@@ -144,27 +146,47 @@ func runQuery(cmd *cobra.Command, query string, opts runOptions) error {
 			return err
 		}
 
-		switch {
-		case printOnly:
-			return printCommands(cmd, suggestions, opts.copy)
-		case opts.yes:
-			return executeWithoutConfirmation(ctx, suggestions, shell)
+		regenerate, refinement, err := runSuggestions(cmd, suggestions, query, shell, opts, &outcome)
+		if err != nil || !regenerate {
+			return err
 		}
 
-		result := prompt.SelectCommands(promptSuggestions(suggestions), query)
-
-		if result.Cancelled {
-			prompt.DisplayWarning("Execution cancelled.")
-			return &ExitError{Code: exitCancelled}
-		}
-
-		if result.Regenerate {
-			request.History = append(request.History, ai.Turn{Commands: suggestions, Feedback: result.Refinement})
-			continue
-		}
-
-		return executeSelectedCommands(ctx, result.SelectedCommands, shell)
+		request.History = append(request.History, ai.Turn{Commands: suggestions, Feedback: refinement})
 	}
+}
+
+// runSuggestions prints or runs one round of suggestions and reports what
+// happened in outcome. It returns true when the user asked for another round.
+func runSuggestions(cmd *cobra.Command, suggestions []ai.Suggestion, query, shell string, opts runOptions, outcome *runOutcome) (bool, string, error) {
+	ctx := cmd.Context()
+
+	// Without a terminal there is nobody to answer the confirmation prompt, so
+	// printing the commands is the only useful thing left to do.
+	printOnly := opts.print || opts.copy || (!opts.yes && !prompt.IsInteractive())
+
+	switch {
+	case printOnly:
+		outcome.commands = commandsOf(suggestions)
+		return false, "", printCommands(cmd, suggestions, opts.copy)
+	case opts.yes:
+		return false, "", executeWithoutConfirmation(ctx, suggestions, shell, outcome)
+	}
+
+	result := prompt.SelectCommands(promptSuggestions(suggestions), query)
+
+	switch {
+	case result.Cancelled:
+		outcome.commands = commandsOf(suggestions)
+		prompt.DisplayWarning("Execution cancelled.")
+		return false, "", &ExitError{Code: exitCancelled}
+	case result.Regenerate:
+		return true, result.Refinement, nil
+	}
+
+	outcome.commands = result.SelectedCommands
+	outcome.executed = len(result.SelectedCommands) > 0
+
+	return false, "", executeSelectedCommands(ctx, result.SelectedCommands, shell)
 }
 
 func generateCommands(ctx context.Context, client *ai.Client, request ai.Request) ([]ai.Suggestion, error) {
@@ -197,6 +219,14 @@ func promptSuggestions(suggestions []ai.Suggestion) []prompt.Suggestion {
 	return items
 }
 
+func commandsOf(suggestions []ai.Suggestion) []string {
+	commands := make([]string, len(suggestions))
+	for i, suggestion := range suggestions {
+		commands[i] = suggestion.Command
+	}
+	return commands
+}
+
 // Explanations are deliberately left out: stdout has to stay usable in $(...)
 // and pipelines.
 func printCommands(cmd *cobra.Command, suggestions []ai.Suggestion, toClipboard bool) error {
@@ -227,7 +257,7 @@ func printCommands(cmd *cobra.Command, suggestions []ai.Suggestion, toClipboard 
 	return nil
 }
 
-func executeWithoutConfirmation(ctx context.Context, suggestions []ai.Suggestion, shell string) error {
+func executeWithoutConfirmation(ctx context.Context, suggestions []ai.Suggestion, shell string, outcome *runOutcome) error {
 	prompt.DisplayCommandPlan(promptSuggestions(suggestions))
 
 	allowed := make([]string, 0, len(suggestions))
@@ -240,9 +270,13 @@ func executeWithoutConfirmation(ctx context.Context, suggestions []ai.Suggestion
 	}
 
 	if len(allowed) == 0 {
+		outcome.commands = commandsOf(suggestions)
 		prompt.DisplayError("Every generated command was blocked for safety reasons.")
 		return &ExitError{Code: 1}
 	}
+
+	outcome.commands = allowed
+	outcome.executed = true
 
 	return executeSelectedCommands(ctx, allowed, shell)
 }
@@ -254,6 +288,11 @@ func cancelled(err error) bool {
 func debugEnabled(cmd *cobra.Command) bool {
 	debug, _ := cmd.Flags().GetBool("debug")
 	return debug || os.Getenv("SHELP_DEBUG") == "1"
+}
+
+func profileName(cmd *cobra.Command) string {
+	name, _ := cmd.Flags().GetString("profile")
+	return name
 }
 
 func runFirstTimeSetup(cmd *cobra.Command, cfg *config.Config) error {
@@ -278,8 +317,8 @@ func runFirstTimeSetup(cmd *cobra.Command, cfg *config.Config) error {
 	}
 	cfg.Model = result.Model
 
-	if err := config.Save(cfg); err != nil {
-		return fmt.Errorf("failed to save configuration: %v", err)
+	if err := saveProfile(cfg); err != nil {
+		return err
 	}
 
 	fmt.Println()
@@ -293,6 +332,21 @@ func runFirstTimeSetup(cmd *cobra.Command, cfg *config.Config) error {
 	}
 
 	fmt.Println()
+
+	return nil
+}
+
+// saveProfile writes the wizard answers into the resolved profile, leaving the
+// values that came from the environment out of the file.
+func saveProfile(cfg *config.Config) error {
+	_, err := config.UpdateProfile(cfg.Profile, func(profile *config.Profile) {
+		profile.AIURL = cfg.AIURL
+		profile.APIKey = cfg.APIKey
+		profile.Model = cfg.Model
+	})
+	if err != nil {
+		return fmt.Errorf("failed to save configuration: %v", err)
+	}
 
 	return nil
 }

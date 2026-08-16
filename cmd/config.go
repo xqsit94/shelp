@@ -28,6 +28,7 @@ func ConfigCmd() *cobra.Command {
 	cmd.AddCommand(configUnsetCmd())
 	cmd.AddCommand(configShowCmd())
 	cmd.AddCommand(configTestCmd())
+	cmd.AddCommand(configProfileCmd())
 	cmd.AddCommand(configResetCmd())
 
 	return cmd
@@ -56,34 +57,28 @@ func configUnsetCmd() *cobra.Command {
 		Long:  "Clear optional configuration values so the provider defaults are used again.",
 	}
 
-	cmd.AddCommand(configUnsetValueCmd("temperature", "Temperature", "Clear the sampling temperature", func(cfg *config.Config) {
-		cfg.Temperature = nil
+	cmd.AddCommand(configUnsetValueCmd("temperature", "Temperature", "Clear the sampling temperature", func(profile *config.Profile) {
+		profile.Temperature = nil
 	}))
-	cmd.AddCommand(configUnsetValueCmd("max-tokens", "Max tokens", "Clear the response token limit", func(cfg *config.Config) {
-		cfg.MaxTokens = nil
+	cmd.AddCommand(configUnsetValueCmd("max-tokens", "Max tokens", "Clear the response token limit", func(profile *config.Profile) {
+		profile.MaxTokens = nil
 	}))
 
 	return cmd
 }
 
-func configUnsetValueCmd(name, label, short string, clear func(*config.Config)) *cobra.Command {
+func configUnsetValueCmd(name, label, short string, clear func(*config.Profile)) *cobra.Command {
 	return &cobra.Command{
 		Use:   name,
 		Short: short,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.LoadFile()
+			profile, err := config.UpdateProfile(profileName(cmd), clear)
 			if err != nil {
 				return err
 			}
 
-			clear(cfg)
-
-			if err := config.Save(cfg); err != nil {
-				return err
-			}
-
-			prompt.DisplaySuccess(label + " cleared, the provider default will be used")
+			prompt.DisplaySuccess(fmt.Sprintf("%s cleared in profile %q, the provider default will be used", label, profile))
 			return nil
 		},
 	}
@@ -96,19 +91,15 @@ func configSetURLCmd() *cobra.Command {
 		Long:  "Set the AI API endpoint URL (e.g., https://openrouter.ai/api/v1/chat/completions)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.LoadFile()
+			profile, err := config.UpdateProfile(profileName(cmd), func(profile *config.Profile) {
+				profile.AIURL = args[0]
+			})
 			if err != nil {
 				return err
 			}
 
-			cfg.AIURL = args[0]
-
-			if err := config.Save(cfg); err != nil {
-				return err
-			}
-
-			prompt.DisplaySuccess("AI URL updated successfully")
-			warnInsecureURL(cfg.AIURL)
+			prompt.DisplaySuccess(fmt.Sprintf("AI URL updated in profile %q", profile))
+			warnInsecureURL(args[0])
 
 			return nil
 		},
@@ -121,11 +112,6 @@ func configSetKeyCmd() *cobra.Command {
 		Short: "Set API key",
 		Long:  "Set the API key for authentication (input will be hidden)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.LoadFile()
-			if err != nil {
-				return err
-			}
-
 			apiKey, err := config.PromptForAPIKey()
 			if err != nil {
 				return err
@@ -135,13 +121,14 @@ func configSetKeyCmd() *cobra.Command {
 				return fmt.Errorf("API key cannot be empty")
 			}
 
-			cfg.APIKey = apiKey
-
-			if err := config.Save(cfg); err != nil {
+			profile, err := config.UpdateProfile(profileName(cmd), func(profile *config.Profile) {
+				profile.APIKey = apiKey
+			})
+			if err != nil {
 				return err
 			}
 
-			prompt.DisplaySuccess("API key updated successfully")
+			prompt.DisplaySuccess(fmt.Sprintf("API key updated in profile %q", profile))
 			return nil
 		},
 	}
@@ -154,18 +141,14 @@ func configSetModelCmd() *cobra.Command {
 		Long:  "Set the AI model to use (e.g., anthropic/claude-3.5-sonnet)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.LoadFile()
+			profile, err := config.UpdateProfile(profileName(cmd), func(profile *config.Profile) {
+				profile.Model = args[0]
+			})
 			if err != nil {
 				return err
 			}
 
-			cfg.Model = args[0]
-
-			if err := config.Save(cfg); err != nil {
-				return err
-			}
-
-			prompt.DisplaySuccess("Model updated successfully")
+			prompt.DisplaySuccess(fmt.Sprintf("Model updated in profile %q", profile))
 			return nil
 		},
 	}
@@ -183,18 +166,14 @@ func configSetTemperatureCmd() *cobra.Command {
 				return fmt.Errorf("invalid temperature: %v", err)
 			}
 
-			cfg, err := config.LoadFile()
+			profile, err := config.UpdateProfile(profileName(cmd), func(profile *config.Profile) {
+				profile.Temperature = &temperature
+			})
 			if err != nil {
 				return err
 			}
 
-			cfg.Temperature = &temperature
-
-			if err := config.Save(cfg); err != nil {
-				return err
-			}
-
-			prompt.DisplaySuccess("Temperature updated successfully")
+			prompt.DisplaySuccess(fmt.Sprintf("Temperature updated in profile %q", profile))
 			return nil
 		},
 	}
@@ -212,18 +191,14 @@ func configSetMaxTokensCmd() *cobra.Command {
 				return fmt.Errorf("invalid max tokens: %v", err)
 			}
 
-			cfg, err := config.LoadFile()
+			profile, err := config.UpdateProfile(profileName(cmd), func(profile *config.Profile) {
+				profile.MaxTokens = &maxTokens
+			})
 			if err != nil {
 				return err
 			}
 
-			cfg.MaxTokens = &maxTokens
-
-			if err := config.Save(cfg); err != nil {
-				return err
-			}
-
-			prompt.DisplaySuccess("Max tokens updated successfully")
+			prompt.DisplaySuccess(fmt.Sprintf("Max tokens updated in profile %q", profile))
 			return nil
 		},
 	}
@@ -235,7 +210,7 @@ func configShowCmd() *cobra.Command {
 		Short: "Show current configuration",
 		Long:  "Display the current shelp configuration (API key will be masked)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.Load()
+			cfg, err := config.LoadProfile(profileName(cmd))
 			if err != nil {
 				return err
 			}
@@ -245,6 +220,7 @@ func configShowCmd() *cobra.Command {
 			}
 
 			displayConfigTable(
+				cfg.Profile,
 				configValue(cfg.AIURL, cfg.FromEnv.AIURL),
 				configValue(cfg.MaskedAPIKey(), cfg.FromEnv.APIKey),
 				configValue(cfg.Model, cfg.FromEnv.Model),
@@ -293,7 +269,7 @@ func maxTokensValue(cfg *config.Config) string {
 	return strconv.Itoa(*cfg.MaxTokens)
 }
 
-func displayConfigTable(aiURL, apiKey, model, temperature, maxTokens string) {
+func displayConfigTable(profile, aiURL, apiKey, model, temperature, maxTokens string) {
 	t := table.New().
 		Border(lipgloss.RoundedBorder()).
 		BorderStyle(prompt.TableBorderStyle).
@@ -312,7 +288,7 @@ func displayConfigTable(aiURL, apiKey, model, temperature, maxTokens string) {
 
 	title := prompt.TitleBoldStyle.
 		Foreground(prompt.ColorPrimary).
-		Render("Configuration")
+		Render(fmt.Sprintf("Configuration (profile: %s)", profile))
 
 	fmt.Println()
 	fmt.Println(title)
@@ -326,7 +302,7 @@ func configTestCmd() *cobra.Command {
 		Short: "Test the AI provider connection",
 		Long:  "Send one harmless request to the configured AI provider and report the result.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.Load()
+			cfg, err := config.LoadProfile(profileName(cmd))
 			if err != nil {
 				return err
 			}
@@ -387,7 +363,7 @@ func configResetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "reset",
 		Short: "Reset all configuration",
-		Long:  "Remove all stored configuration settings",
+		Long:  "Remove all stored configuration settings, including every profile",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !prompt.ConfirmYesNoInteractive("Are you sure you want to reset all configuration?") {
 				prompt.DisplayWarning("Reset cancelled.")

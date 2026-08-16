@@ -10,6 +10,8 @@ Your AI-powered shell assistant. Convert natural language to safe, executable sh
 - **Risk Labels**: Every command is labelled safe/caution/danger, and catastrophic patterns are blocked
 - **Pipe Friendly**: Without a terminal shelp prints the commands instead of running them
 - **BYOK**: Bring Your Own Key - use any OpenAI-compatible API
+- **Named Profiles**: Keep several providers configured and pick one with `--profile`
+- **Query History**: Past queries and their commands are recorded and can be run again
 - **Shell Detection**: Generates commands compatible with your shell (bash, zsh, fish)
 
 ## Installation
@@ -140,6 +142,8 @@ a summary tree is printed at the end.
 | `-p`, `--print` | Print the generated commands to stdout, one per line, and exit. Nothing runs. |
 | `-y`, `--yes` | Skip the confirmation UI and run the commands (blocked ones are skipped). |
 | `-c`, `--copy` | Like `--print`, and copy the commands (newline-joined) to the clipboard. |
+| `--profile <name>` | Use a named provider profile (see [Profiles](#profiles)). |
+| `--no-history` | Do not record the query in the history. |
 | `--debug` | Print the AI request and response to stderr (the API key is redacted). |
 | `-v`, `--version` | Print the version. |
 | `-h`, `--help` | Print help. |
@@ -163,6 +167,44 @@ a terminal. For unattended runs that should actually execute, use `--yes`:
 ```bash
 shelp -y "restart the docker compose stack"
 ```
+
+### History
+
+Every answered query is appended to `~/.shelp/history.jsonl` (or
+`$SHELP_CONFIG_DIR/history.jsonl`), one JSON object per line: the time, the
+query, the commands, whether they ran, the exit code of the run and the profile
+that produced them. The file is created with mode `0600` and keeps the newest
+1000 entries.
+
+```bash
+# The 20 most recent queries, newest first
+shelp history
+shelp history -n 5
+
+# Run the commands of entry 3 again (same -p/-y/-c flags as a normal run)
+shelp history run 3
+shelp history run 3 -p
+
+# Delete the history file
+shelp history clear
+```
+
+```
+$ shelp history
+1  2m ago  "find javascript files changed this week"
+   ├─ find . -name "*.js" -mtime -7 ✓
+   └─ find . -name "*.jsx" -mtime -7 ✕ (exit 1)
+2  15:04 03 Mar  "show disk usage for current directory"
+   └─ du -sh . –
+```
+
+`✓` ran and succeeded, `✕ (exit N)` ran and failed, `–` never ran (printed,
+copied or cancelled).
+
+`--no-history` skips one query, `SHELP_NO_HISTORY=1` turns recording off
+altogether. Queries and commands are stored in cleartext, so anything you typed
+into a command - paths, host names, tokens - ends up in the file; `shelp history
+clear` deletes it.
 
 ### Configuration
 
@@ -194,6 +236,44 @@ shelp config test
 shelp config reset
 ```
 
+### Profiles
+
+Settings live in named profiles, so a hosted provider and a local model can be
+configured side by side:
+
+```bash
+# Add a profile with the setup wizard (needs a terminal)
+shelp config profile add work
+
+# The same without a terminal
+shelp --profile work config set url http://localhost:11434/v1/chat/completions
+shelp --profile work config set model qwen2.5-coder
+
+# What is configured, with * marking the active profile
+shelp config profile list
+
+# Switch the active profile
+shelp config profile use work
+
+# Rename or remove (the active profile cannot be removed)
+shelp config profile rename work office
+shelp config profile remove office
+```
+
+Use one without switching:
+
+```bash
+shelp --profile work "list all running docker containers"
+SHELP_PROFILE=work shelp config test
+```
+
+The profile is resolved as `--profile` > `SHELP_PROFILE` > the active profile >
+`default`, and the `SHELP_*` variables below still override the fields of
+whichever profile wins. `shelp config set ...`, `shelp config unset ...` and the first-run
+wizard write to the resolved profile.
+
+### Environment Variables
+
 Environment variables override the config file:
 
 | Variable | Effect |
@@ -203,7 +283,9 @@ Environment variables override the config file:
 | `SHELP_MODEL` | Model name |
 | `SHELP_TEMPERATURE` | Sampling temperature, `0`-`2` |
 | `SHELP_MAX_TOKENS` | Response token limit, a positive integer |
+| `SHELP_PROFILE` | Profile to use, overridden by `--profile` |
 | `SHELP_CONFIG_DIR` | Config directory (default `~/.shelp`) |
+| `SHELP_NO_HISTORY=1` | Never record queries in the history |
 | `SHELP_DEBUG=1` | Same as `--debug` |
 
 Precedence is environment > config file. `shelp config set ...` always writes to
@@ -298,15 +380,29 @@ Configuration is stored in `~/.shelp/config.json` (or `$SHELP_CONFIG_DIR`):
 
 ```json
 {
-  "ai_url": "https://openrouter.ai/api/v1/chat/completions",
-  "api_key": "sk-or-...",
-  "model": "anthropic/claude-3.5-sonnet"
+  "active_profile": "default",
+  "profiles": {
+    "default": {
+      "ai_url": "https://openrouter.ai/api/v1/chat/completions",
+      "api_key": "sk-or-...",
+      "model": "anthropic/claude-3.5-sonnet"
+    },
+    "work": {
+      "ai_url": "http://localhost:11434/v1/chat/completions",
+      "api_key": "ollama",
+      "model": "qwen2.5-coder"
+    }
+  }
 }
 ```
 
-`temperature` and `max_tokens` are added only once you set them.
+`temperature` and `max_tokens` are added per profile only once you set them.
+Single-profile files from older versions (`ai_url`, `api_key` and `model` at the
+top level) are still read as the `default` profile and are rewritten in this
+format the next time a setting changes.
 
-File permissions are set to `0600` (owner read/write only) for security.
+The query history lives next to it in `history.jsonl`. Both files are created
+with mode `0600` (owner read/write only) in a `0700` directory.
 
 ## Contributing
 
