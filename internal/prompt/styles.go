@@ -44,12 +44,6 @@ var (
 			Foreground(colorText).
 			Bold(true)
 
-	outputTextStyle = lipgloss.NewStyle().
-			Foreground(colorTextDim)
-
-	errorTextStyle = lipgloss.NewStyle().
-			Foreground(colorDanger)
-
 	// Semantic styles
 	SuccessStyle = lipgloss.NewStyle().
 			Foreground(colorSuccess)
@@ -125,9 +119,6 @@ var (
 	progressEmptyStyle = lipgloss.NewStyle().
 				Foreground(colorBorderDim)
 
-	commandPreviewStyle = lipgloss.NewStyle().
-				Foreground(colorTextMuted)
-
 	// Input styles
 	inputStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.NormalBorder()).
@@ -175,27 +166,4 @@ func GetTerminalWidth() int {
 		return 80
 	}
 	return width
-}
-
-func RenderTitledBox(title, content string, borderColor lipgloss.Color) string {
-	width := GetTerminalWidth() - 2
-
-	titleRendered := TitleBoldStyle.
-		Foreground(borderColor).
-		Render(title)
-
-	box := boxBase.
-		BorderForeground(borderColor).
-		Width(width).
-		Render(content)
-
-	return titleRendered + "\n" + box
-}
-
-func RenderOutputBox(content string) string {
-	return RenderTitledBox("Output", outputTextStyle.Render(content), colorBorder)
-}
-
-func RenderErrorBox(content string) string {
-	return RenderTitledBox("Error", errorTextStyle.Render(content), colorDanger)
 }

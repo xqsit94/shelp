@@ -156,12 +156,8 @@ func (m commandListModel) View() string {
 			checkbox = checkboxBlockedStyle.Render("[⊘]")
 		}
 
-		cmdLine := fmt.Sprintf("%s %s %s",
-			connectorStyle.Render(branch),
-			checkbox,
-			HighlightCommand(item.Command),
-		)
-		b.WriteString(cmdLine + "\n")
+		prefix := fmt.Sprintf("%s %s ", connectorStyle.Render(branch), checkbox)
+		b.WriteString(IndentUnder(prefix, HighlightCommand(item.Command)) + "\n")
 
 		verticalLine := TreeVertical
 		if isLast {
@@ -223,11 +219,11 @@ type CommandListResult struct {
 	SelectedCommands []string
 	Cancelled        bool
 	Regenerate       bool
-	NewQuery         string
+	Refinement       string
 }
 
 func SelectCommands(commands []string, originalQuery string) CommandListResult {
-	if len(commands) == 0 {
+	if len(commands) == 0 || !IsInteractive() {
 		return CommandListResult{Cancelled: true}
 	}
 
@@ -237,7 +233,7 @@ func SelectCommands(commands []string, originalQuery string) CommandListResult {
 		case ConfirmExecute:
 			return CommandListResult{SelectedCommands: commands}
 		case ConfirmRegenerate:
-			return CommandListResult{Regenerate: true, NewQuery: originalQuery}
+			return CommandListResult{Regenerate: true}
 		default:
 			return CommandListResult{Cancelled: true}
 		}
@@ -257,12 +253,7 @@ func SelectCommands(commands []string, originalQuery string) CommandListResult {
 	}
 
 	if result.regenerate {
-		refinement := strings.TrimSpace(result.textInput.Value())
-		newQuery := originalQuery
-		if refinement != "" {
-			newQuery = originalQuery + ", " + refinement
-		}
-		return CommandListResult{Regenerate: true, NewQuery: newQuery}
+		return CommandListResult{Regenerate: true, Refinement: strings.TrimSpace(result.textInput.Value())}
 	}
 
 	var selected []string

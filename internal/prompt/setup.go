@@ -199,6 +199,10 @@ func (m setupModel) renderProgressBar() string {
 }
 
 func RunSetupWizard() SetupResult {
+	if !IsInteractive() {
+		return SetupResult{Cancelled: true}
+	}
+
 	m := newSetupModel()
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()

@@ -2,7 +2,9 @@ package prompt
 
 import (
 	"fmt"
-	"strings"
+	"os"
+
+	"golang.org/x/term"
 )
 
 const (
@@ -11,22 +13,18 @@ const (
 	IconWarning = "▲"
 )
 
-func DisplayOutput(output string, isError bool) {
-	if output == "" {
-		return
-	}
+func IsInteractive() bool {
+	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+}
 
-	lines := strings.Split(output, "\n")
-	var content strings.Builder
-	for _, line := range lines {
-		content.WriteString(line + "\n")
-	}
+func DisplayRunning(index, total int, command string) {
+	prefix := fmt.Sprintf("%s %s ",
+		TreeStyle.Render(TreeBranch),
+		hintStyle.Render(fmt.Sprintf("[%d/%d]", index, total)),
+	)
 
-	if isError {
-		fmt.Println(RenderErrorBox(strings.TrimSpace(content.String())))
-	} else {
-		fmt.Println(RenderOutputBox(strings.TrimSpace(content.String())))
-	}
+	fmt.Println(IndentUnder(prefix, HighlightCommand(command)))
+	fmt.Println()
 }
 
 func DisplaySuccess(message string) {

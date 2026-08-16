@@ -1,8 +1,13 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/xqsit94/shelp/internal/ai"
@@ -12,7 +17,51 @@ import (
 	"github.com/xqsit94/shelp/internal/version"
 )
 
+const exitCancelled = 130
+
+// ExitError carries the process exit code. A nil Err means the failure was
+// already reported to the user.
+type ExitError struct {
+	Code int
+	Err  error
+}
+
+func (e *ExitError) Error() string {
+	if e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
+}
+
+func (e *ExitError) Unwrap() error {
+	return e.Err
+}
+
+func Run() int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	err := RootCmd().ExecuteContext(ctx)
+	if err == nil {
+		return 0
+	}
+
+	var exitErr *ExitError
+	if errors.As(err, &exitErr) {
+		if exitErr.Err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", exitErr.Err)
+		}
+		return exitErr.Code
+	}
+
+	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+
+	return 1
+}
+
 func RootCmd() *cobra.Command {
+	var debug bool
+
 	cmd := &cobra.Command{
 		Use:   "shelp [query]",
 		Short: "Convert natural language to shell commands",
@@ -34,17 +83,22 @@ Examples:
 				return cmd.Help()
 			}
 
-			query := strings.Join(args, " ")
-			return runQuery(query)
+			return runQuery(cmd.Context(), strings.Join(args, " "), debug)
 		},
 	}
+
+	cmd.PersistentFlags().BoolVar(&debug, "debug", false, "print AI requests and responses to stderr")
 
 	cmd.AddCommand(ConfigCmd())
 
 	return cmd
 }
 
-func runQuery(query string) error {
+func runQuery(ctx context.Context, query string, debug bool) error {
+	if !prompt.IsInteractive() {
+		return &ExitError{Code: 1, Err: errors.New("shelp needs an interactive terminal")}
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %v", err)
@@ -57,49 +111,56 @@ func runQuery(query string) error {
 	}
 
 	shell := executor.DetectShell()
-	client := ai.NewClient(cfg.AIURL, cfg.APIKey, cfg.Model)
 
-	currentQuery := query
+	client := ai.NewClient(cfg.AIURL, cfg.APIKey, cfg.Model)
+	client.Debug = debug || os.Getenv("SHELP_DEBUG") == "1"
+
+	request := ai.Request{Query: query, Shell: shell}
 
 	for {
-		spinner := prompt.NewSpinner("Generating commands...")
-		spinner.Start()
-
-		commands, err := client.GenerateCommands(currentQuery, shell)
-
-		spinner.Stop()
+		commands, err := prompt.RunWithSpinner(ctx, "Generating commands...", func(ctx context.Context) ([]string, error) {
+			return client.GenerateCommands(ctx, request)
+		})
 
 		if err != nil {
+			if cancelled(err) {
+				prompt.DisplayWarning("Execution cancelled.")
+				return &ExitError{Code: exitCancelled}
+			}
 			prompt.DisplayError(fmt.Sprintf("Failed to generate commands: %v", err))
-			return nil
+			return &ExitError{Code: 1}
 		}
 
 		if len(commands) == 0 {
 			prompt.DisplayWarning("No commands generated. The request may be unclear or potentially unsafe.")
-			return nil
+			return &ExitError{Code: 1}
 		}
 
-		result := prompt.SelectCommands(commands, currentQuery)
+		result := prompt.SelectCommands(commands, query)
 
 		if result.Cancelled {
 			prompt.DisplayWarning("Execution cancelled.")
-			return nil
+			return &ExitError{Code: exitCancelled}
 		}
 
 		if result.Regenerate {
-			currentQuery = result.NewQuery
+			request.History = append(request.History, ai.Turn{Commands: commands, Feedback: result.Refinement})
 			continue
 		}
 
-		return executeSelectedCommands(result.SelectedCommands, shell)
+		return executeSelectedCommands(ctx, result.SelectedCommands, shell)
 	}
+}
+
+func cancelled(err error) bool {
+	return errors.Is(err, prompt.ErrCancelled) || errors.Is(err, context.Canceled)
 }
 
 func runFirstTimeSetup(cfg *config.Config) error {
 	result := prompt.RunSetupWizard()
 
 	if result.Cancelled {
-		return fmt.Errorf("setup cancelled")
+		return &ExitError{Code: exitCancelled, Err: errors.New("setup cancelled")}
 	}
 
 	if result.AIURL == "" {
@@ -128,82 +189,85 @@ func runFirstTimeSetup(cfg *config.Config) error {
 	return nil
 }
 
-func executeSelectedCommands(commands []string, shell string) error {
+type commandResult struct {
+	command     string
+	exitCode    int
+	interrupted bool
+	execErr     error
+}
+
+func executeSelectedCommands(ctx context.Context, commands []string, shell string) error {
 	if len(commands) == 0 {
 		prompt.DisplayWarning("No commands selected.")
 		return nil
 	}
 
 	total := len(commands)
-	results := make([]struct {
-		cmd       string
-		success   bool
-		exitCode  int
-		output    string
-		errOutput string
-		execErr   error
-	}, total)
+	results := make([]commandResult, 0, total)
 
-	for i, cmd := range commands {
-		progress := prompt.NewBatchExecutionProgress(i+1, total, cmd)
-		progress.Start()
-
-		execResult, err := executor.Execute(cmd, shell)
-
-		progress.Stop()
-
-		results[i].cmd = cmd
-		results[i].execErr = err
-
-		if err != nil {
-			results[i].success = false
-			if i < total-1 {
-				if !prompt.ConfirmYesNoInteractive("Continue with next command?") {
-					results = results[:i+1]
-					break
-				}
-			}
-			continue
+	for i, command := range commands {
+		if ctx.Err() != nil {
+			break
 		}
 
-		results[i].success = execResult.ExitCode == 0
-		results[i].exitCode = execResult.ExitCode
-		results[i].output = execResult.Output
-		results[i].errOutput = execResult.Error
+		fmt.Println()
+		prompt.DisplayRunning(i+1, total, command)
+
+		execResult, err := executor.Execute(ctx, command, shell, executor.Options{})
+
+		result := commandResult{command: command, execErr: err}
+		if err == nil {
+			result.exitCode = execResult.ExitCode
+			result.interrupted = execResult.Interrupted
+		}
+		results = append(results, result)
+
+		if result.interrupted || ctx.Err() != nil {
+			break
+		}
+
+		failed := result.execErr != nil || result.exitCode != 0
+		if failed && i < total-1 && !prompt.ConfirmYesNoInteractive("Continue with next command?") {
+			break
+		}
 	}
 
+	return summarize(results)
+}
+
+func summarize(results []commandResult) error {
 	fmt.Println()
 	fmt.Println(prompt.TitleBoldStyle.Render(fmt.Sprintf("Executed Commands (%d)", len(results))))
 
+	exitCode := 0
+
 	for i, result := range results {
-		isLast := i == len(results)-1
 		branch := prompt.TreeBranch
-		if isLast {
+		if i == len(results)-1 {
 			branch = prompt.TreeLastBranch
 		}
 
-		cmdPreview := prompt.Truncate(result.cmd, 50)
-
 		styledBranch := prompt.TreeStyle.Render(branch)
+		preview := prompt.Truncate(prompt.Oneline(result.command), 50)
 
-		if result.execErr != nil {
-			fmt.Println(styledBranch + " " + prompt.DangerStyle.Render(cmdPreview+" ✕"))
+		switch {
+		case result.execErr != nil:
+			fmt.Println(styledBranch + " " + prompt.DangerStyle.Render(preview+" ✕"))
 			fmt.Println(prompt.DangerStyle.Render("   Failed: " + result.execErr.Error()))
-		} else if !result.success {
-			fmt.Println(styledBranch + " " + prompt.DangerStyle.Render(fmt.Sprintf("%s ✕ (exit %d)", cmdPreview, result.exitCode)))
-		} else {
-			fmt.Println(styledBranch + " " + prompt.SuccessStyle.Render(cmdPreview+" ✓"))
+			exitCode = 1
+		case result.interrupted:
+			fmt.Println(styledBranch + " " + prompt.DangerStyle.Render(preview+" ✕ (interrupted)"))
+			exitCode = exitCancelled
+		case result.exitCode != 0:
+			fmt.Println(styledBranch + " " + prompt.DangerStyle.Render(fmt.Sprintf("%s ✕ (exit %d)", preview, result.exitCode)))
+			exitCode = result.exitCode
+		default:
+			fmt.Println(styledBranch + " " + prompt.SuccessStyle.Render(preview+" ✓"))
 		}
+	}
 
-		if result.output != "" {
-			fmt.Println()
-			prompt.DisplayOutputInteractive(result.output, false)
-		}
-
-		if result.errOutput != "" {
-			fmt.Println()
-			prompt.DisplayOutputInteractive(result.errOutput, true)
-		}
+	if exitCode != 0 {
+		return &ExitError{Code: exitCode}
 	}
 
 	return nil

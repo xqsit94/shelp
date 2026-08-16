@@ -1,64 +1,94 @@
 package executor
 
 import (
-	"bytes"
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/xqsit94/shelp/internal/safety"
 )
 
-type Result struct {
-	Command  string
-	Output   string
-	Error    string
-	ExitCode int
+const waitDelay = 3 * time.Second
+
+type Options struct {
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
 }
 
-func Execute(command, shell string) (*Result, error) {
+type Result struct {
+	Command     string
+	ExitCode    int
+	Interrupted bool
+}
+
+func Execute(ctx context.Context, command, shell string, opts Options) (*Result, error) {
 	if safety.IsBlocked(command) {
 		return nil, fmt.Errorf("command blocked for safety reasons")
 	}
 
-	var cmd *exec.Cmd
-	switch shell {
-	case "zsh":
-		cmd = exec.Command("zsh", "-c", command)
-	case "fish":
-		cmd = exec.Command("fish", "-c", command)
-	case "sh":
-		cmd = exec.Command("sh", "-c", command)
-	default:
-		cmd = exec.Command("bash", "-c", command)
-	}
+	cmd := exec.CommandContext(ctx, resolveShell(shell), "-c", command)
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = waitDelay
 
 	cmd.Dir, _ = os.Getwd()
 	cmd.Env = os.Environ()
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdin = os.Stdin
+	if opts.Stdin != nil {
+		cmd.Stdin = opts.Stdin
+	}
+
+	cmd.Stdout = os.Stdout
+	if opts.Stdout != nil {
+		cmd.Stdout = opts.Stdout
+	}
+
+	cmd.Stderr = os.Stderr
+	if opts.Stderr != nil {
+		cmd.Stderr = opts.Stderr
+	}
 
 	err := cmd.Run()
 
 	result := &Result{
-		Command:  command,
-		Output:   strings.TrimSpace(stdout.String()),
-		Error:    strings.TrimSpace(stderr.String()),
-		ExitCode: 0,
+		Command:     command,
+		Interrupted: ctx.Err() != nil,
 	}
 
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			result.ExitCode = exitErr.ExitCode()
-		} else {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
 			return nil, fmt.Errorf("failed to execute command: %v", err)
+		}
+
+		result.ExitCode = exitErr.ExitCode()
+		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			result.ExitCode = 128 + int(status.Signal())
 		}
 	}
 
 	return result, nil
+}
+
+// $SHELL may name a shell that is not installed here (fish or zsh on a bare
+// server), so fall back to the one shell that is always present.
+func resolveShell(shell string) string {
+	if shell == "" {
+		shell = "bash"
+	}
+
+	if _, err := exec.LookPath(shell); err != nil {
+		return "sh"
+	}
+
+	return shell
 }
 
 func DetectShell() string {

@@ -83,7 +83,7 @@ func (m confirmModel) View() string {
 
 	s := "\n"
 	s += cmdTitleStyle.Render("Generated Command") + "\n"
-	s += TreeStyle.Render(TreeLastBranch) + " " + HighlightCommand(m.command) + "\n"
+	s += IndentUnder(TreeStyle.Render(TreeLastBranch)+" ", HighlightCommand(m.command)) + "\n"
 	s += fmt.Sprintf("   %s %s\n\n", riskEmoji, riskStyle.Render(string(m.risk)))
 
 	for i, choice := range m.choices {
@@ -102,6 +102,10 @@ func (m confirmModel) View() string {
 }
 
 func ConfirmExecutionInteractive(cmd string) ConfirmChoice {
+	if !IsInteractive() {
+		return ConfirmCancel
+	}
+
 	if safety.IsBlocked(cmd) {
 		fmt.Println(DangerStyle.Render("This command has been blocked for safety reasons."))
 		return ConfirmCancel
@@ -192,6 +196,10 @@ func (m confirmYesNoModel) View() string {
 }
 
 func ConfirmYesNoInteractive(prompt string) bool {
+	if !IsInteractive() {
+		return false
+	}
+
 	m := newConfirmYesNoModel(prompt)
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()

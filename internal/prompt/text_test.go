@@ -27,3 +27,57 @@ func TestTruncate(t *testing.T) {
 		})
 	}
 }
+
+func TestOneline(t *testing.T) {
+	tests := []struct {
+		name string
+		s    string
+		want string
+	}{
+		{"single line", "ls -la", "ls -la"},
+		{"multi line", "cd project &&\n  npm test", "cd project && npm test"},
+		{"tabs", "for f in *; do\n\techo $f\ndone", "for f in *; do echo $f done"},
+		{"empty", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Oneline(tt.s); got != tt.want {
+				t.Errorf("Oneline(%q) = %q, want %q", tt.s, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIndentLines(t *testing.T) {
+	tests := []struct {
+		name   string
+		s      string
+		indent int
+		want   string
+	}{
+		{"single line", "ls -la", 4, "ls -la"},
+		{"two lines", "a\nb", 2, "a\n  b"},
+		{"three lines", "a\nb\nc", 1, "a\n b\n c"},
+		{"zero indent", "a\nb", 0, "a\nb"},
+		{"negative indent", "a\nb", -1, "a\nb"},
+		{"empty", "", 4, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IndentLines(tt.s, tt.indent); got != tt.want {
+				t.Errorf("IndentLines(%q, %d) = %q, want %q", tt.s, tt.indent, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIndentUnder(t *testing.T) {
+	got := IndentUnder("├─ ", "cd project\n&& npm test")
+	want := "├─ cd project\n   && npm test"
+
+	if got != want {
+		t.Errorf("IndentUnder = %q, want %q", got, want)
+	}
+}
