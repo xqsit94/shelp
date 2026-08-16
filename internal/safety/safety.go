@@ -22,6 +22,16 @@ const (
 	anyFlag       = `(--[a-z-]+|--|-[a-z]+)`
 	destructiveRm = `(--recursive|--force|--no-preserve-root|-[a-z]*[rf][a-z]*)`
 	recursiveFlag = `(--recursive|-[a-z]*r[a-z]*)`
+
+	// Windows drive roots and profile directories, optionally quoted and with a
+	// trailing separator or wildcard.
+	windowsDrive = `([a-z]:|\$env:systemdrive|\$env:userprofile|\$home|~)`
+	windowsRoot  = `["']?(` + windowsDrive + `(\\\*?|/\*?)?|\\\*?)["']?`
+	// Any PowerShell or cmd flag, and the subset that deletes recursively or
+	// without asking, including the abbreviations PowerShell accepts.
+	windowsFlag   = `(-[a-z]+|/[a-z])`
+	windowsDelete = `(remove-item|rmdir|erase|del|rd|ri|rm)`
+	forcedDelete  = `(-r|-rec[a-z]*|-f|-for[a-z]*|/s|/q|/f)`
 )
 
 var blockedPatterns = []*regexp.Regexp{
@@ -41,6 +51,10 @@ var blockedPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\becho\s+.*\|\s*base64\s+-d\s*\|\s*(ba)?sh`),
 	regexp.MustCompile(`\bperl\s+-e\s*['"].*exec`),
 	regexp.MustCompile(`\bpython[23]?\s+-c\s*['"].*exec`),
+	regexp.MustCompile(`\b` + windowsDelete + `\s+(` + windowsFlag + `\s+)*` + forcedDelete + `\s+(` + windowsFlag + `\s+)*` + windowsRoot + `\s*$`),
+	regexp.MustCompile(`\b` + windowsDelete + `\s+(` + windowsFlag + `\s+)*` + windowsRoot + `\s+(` + windowsFlag + `\s+)*` + forcedDelete + `\b`),
+	regexp.MustCompile(`^format\s+["']?[a-z]:`),
+	regexp.MustCompile(`\b(format-volume|clear-disk|initialize-disk|diskpart)\b`),
 }
 
 var cautionPatterns = []*regexp.Regexp{
@@ -68,6 +82,12 @@ var cautionPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`apt(-get)?\s+install`),
 	regexp.MustCompile(`yum\s+install`),
 	regexp.MustCompile(`dnf\s+install`),
+	regexp.MustCompile(`remove-item\s`),
+	regexp.MustCompile(`stop-service\s`),
+	regexp.MustCompile(`(restart|stop)-computer`),
+	regexp.MustCompile(`set-executionpolicy\s`),
+	regexp.MustCompile(`reg\s+delete\s`),
+	regexp.MustCompile(`bcdedit`),
 }
 
 var assignmentPattern = regexp.MustCompile(`^[a-z_][a-z0-9_]*=`)

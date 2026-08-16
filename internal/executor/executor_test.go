@@ -3,10 +3,21 @@ package executor
 import (
 	"bytes"
 	"context"
+	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
+
+func lookPathIn(installed ...string) func(string) (string, error) {
+	return func(name string) (string, error) {
+		if slices.Contains(installed, name) {
+			return "/fake/" + name, nil
+		}
+		return "", exec.ErrNotFound
+	}
+}
 
 func TestDetectShell(t *testing.T) {
 	tests := []struct {
@@ -27,6 +38,62 @@ func TestDetectShell(t *testing.T) {
 			t.Setenv("SHELL", tt.shell)
 			if got := DetectShell(); got != tt.want {
 				t.Errorf("DetectShell() with SHELL=%q = %q, want %q", tt.shell, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetectShellForGOOS(t *testing.T) {
+	tests := []struct {
+		name      string
+		goos      string
+		shellEnv  string
+		installed []string
+		want      string
+	}{
+		{"unix zsh", "darwin", "/bin/zsh", nil, "zsh"},
+		{"unix fish", "linux", "/usr/bin/fish", nil, "fish"},
+		{"unix unknown", "linux", "/opt/bin/nu", nil, "bash"},
+		{"unix unset", "linux", "", nil, "bash"},
+		{"windows prefers pwsh", "windows", "", []string{"pwsh", "powershell"}, "pwsh"},
+		{"windows falls back to powershell", "windows", "", []string{"powershell"}, "powershell"},
+		{"windows falls back to cmd", "windows", "", nil, "cmd"},
+		{"windows ignores SHELL", "windows", "/bin/zsh", nil, "cmd"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectShell(tt.goos, tt.shellEnv, lookPathIn(tt.installed...))
+			if got != tt.want {
+				t.Errorf("detectShell(%q, %q) = %q, want %q", tt.goos, tt.shellEnv, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShellArgs(t *testing.T) {
+	tests := []struct {
+		name  string
+		shell string
+		want  []string
+	}{
+		{"sh", "sh", []string{"-c", "echo hi"}},
+		{"bash", "bash", []string{"-c", "echo hi"}},
+		{"zsh", "zsh", []string{"-c", "echo hi"}},
+		{"fish", "fish", []string{"-c", "echo hi"}},
+		{"pwsh", "pwsh", []string{"-NoProfile", "-Command", "echo hi"}},
+		{"powershell", "powershell", []string{"-NoProfile", "-Command", "echo hi"}},
+		{"cmd", "cmd", []string{"/C", "echo hi"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, args := shellArgs(tt.shell, "echo hi")
+			if name != tt.shell {
+				t.Errorf("shellArgs(%q) name = %q, want %q", tt.shell, name, tt.shell)
+			}
+			if !slices.Equal(args, tt.want) {
+				t.Errorf("shellArgs(%q) args = %q, want %q", tt.shell, args, tt.want)
 			}
 		})
 	}

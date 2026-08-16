@@ -25,6 +25,16 @@ go mod tidy                     # must leave go.mod and go.sum unchanged
 go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 ```
 
+The Windows build is cross-compiled only, so anything touching the executor,
+signals or paths has to keep compiling for it:
+
+```bash
+GOOS=windows GOARCH=amd64 go build ./...
+GOOS=windows GOARCH=amd64 go vet ./...
+GOOS=linux GOARCH=amd64 go build ./...
+GOOS=darwin GOARCH=arm64 go build ./...
+```
+
 `gofmt -l .` and staticcheck must both be clean; CI fails otherwise. Run
 `gofmt -w .` to fix formatting.
 

@@ -14,10 +14,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -27,6 +27,12 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+
+      - name: Cross-compile
+        run: |
+          for target in windows/amd64 windows/arm64 linux/amd64 darwin/arm64; do
+            GOOS="${target%/*}" GOARCH="${target#*/}" go build ./...
+          done
 
       - name: Check formatting
         run: |

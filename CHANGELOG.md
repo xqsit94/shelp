@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Shell integration: `shelp init zsh|bash|fish|powershell` prints a snippet that
+  binds `ctrl+g` to a widget which sends the current command line to shelp and
+  replaces it with the generated commands (joined with ` && `, or `; ` in
+  PowerShell). An empty line does nothing and a failure leaves the line
+  untouched with the error on stderr. The key is rebound by pasting the snippet
+  into the startup file instead of eval-ing it.
+- Experimental Windows build: `windows/amd64` and `windows/arm64` are released
+  as `shelp-windows-<arch>.zip`, commands run through `pwsh`, `powershell` or
+  `cmd`, the system prompt gained Windows hints, and the blocklist gained
+  catastrophic Windows commands (recursive/forced `Remove-Item`/`del`/`rd` on a
+  drive root, `format`, `Format-Volume`, `Clear-Disk`, `Initialize-Disk`,
+  `diskpart`). It is cross-compiled and not yet tested at runtime.
 - Query history: every answered query is appended to
   `~/.shelp/history.jsonl` (time, query, commands, whether they ran, exit code
   and profile, mode `0600`, newest 1000 entries kept). `shelp history` lists the
@@ -68,6 +80,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- GitHub Actions bumped to versions that run on Node 24 (`actions/checkout@v5`,
+  `actions/setup-go@v6`, `actions/upload-artifact@v6`,
+  `actions/download-artifact@v7`, `softprops/action-gh-release@v3`), and CI now
+  cross-compiles for windows/amd64, windows/arm64, linux/amd64 and darwin/arm64.
 - Commands stream straight to the terminal and inherit stdin, so interactive and
   long-running commands work; the alt-screen output viewer that erased output
   from the scrollback is gone.

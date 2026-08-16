@@ -22,13 +22,17 @@ jobs:
             goarch: amd64
           - goos: linux
             goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -39,17 +43,25 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          go build -trimpath -ldflags="-s -w -X github.com/xqsit94/shelp/internal/version.Version=${VERSION}" -o shelp .
-          tar -czvf shelp-${GOOS}-${GOARCH}.tar.gz shelp
-          sha256sum shelp-${GOOS}-${GOARCH}.tar.gz > shelp-${GOOS}-${GOARCH}.tar.gz.sha256
+          LDFLAGS="-s -w -X github.com/xqsit94/shelp/internal/version.Version=${VERSION}"
+          if [ "$GOOS" = "windows" ]; then
+            go build -trimpath -ldflags="$LDFLAGS" -o shelp.exe .
+            zip -j shelp-${GOOS}-${GOARCH}.zip shelp.exe
+            sha256sum shelp-${GOOS}-${GOARCH}.zip > shelp-${GOOS}-${GOARCH}.zip.sha256
+          else
+            go build -trimpath -ldflags="$LDFLAGS" -o shelp .
+            tar -czvf shelp-${GOOS}-${GOARCH}.tar.gz shelp
+            sha256sum shelp-${GOOS}-${GOARCH}.tar.gz > shelp-${GOOS}-${GOARCH}.tar.gz.sha256
+          fi
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: shelp-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
-            shelp-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
-            shelp-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz.sha256
+            shelp-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz*
+            shelp-${{ matrix.goos }}-${{ matrix.goarch }}.zip*
+          if-no-files-found: error
 
   release:
     needs: build
@@ -62,10 +74,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
@@ -79,11 +91,12 @@ jobs:
           echo "sha_linux_arm64=$(cat dist/shelp-linux-arm64.tar.gz.sha256 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |
             dist/*.tar.gz
+            dist/*.zip
             dist/*.sha256
 
   update-formula:
@@ -92,7 +105,7 @@ jobs:
 
     steps:
       - name: Checkout homebrew-shelp
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: xqsit94/homebrew-shelp
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}

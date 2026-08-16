@@ -12,7 +12,8 @@ Your AI-powered shell assistant. Convert natural language to safe, executable sh
 - **BYOK**: Bring Your Own Key - use any OpenAI-compatible API
 - **Named Profiles**: Keep several providers configured and pick one with `--profile`
 - **Query History**: Past queries and their commands are recorded and can be run again
-- **Shell Detection**: Generates commands compatible with your shell (bash, zsh, fish)
+- **Shell Integration**: `ctrl+g` turns the line you are typing into commands
+- **Shell Detection**: Generates commands compatible with your shell (bash, zsh, fish, PowerShell)
 
 ## Installation
 
@@ -54,6 +55,20 @@ cd shelp
 go build -o shelp
 mv shelp ~/.local/bin/
 ```
+
+### Windows (experimental)
+
+Download `shelp-windows-amd64.zip` or `shelp-windows-arm64.zip` from the
+[releases page](https://github.com/xqsit94/shelp/releases), unpack `shelp.exe`
+and put it on your `PATH`, or build it yourself:
+
+```powershell
+go install github.com/xqsit94/shelp@latest
+```
+
+Commands then run through `pwsh`, falling back to `powershell` and then `cmd`.
+The Windows build is cross-compiled and not yet tested at runtime - see
+[Known Limitations](#known-limitations).
 
 ## Usage
 
@@ -167,6 +182,34 @@ a terminal. For unattended runs that should actually execute, use `--yes`:
 ```bash
 shelp -y "restart the docker compose stack"
 ```
+
+### Shell Integration
+
+`shelp init <shell>` prints a snippet that binds `ctrl+g` to a widget: it takes
+whatever is on the command line as the query, runs `shelp -p` with it and
+replaces the line with the generated commands, cursor at the end. Nothing runs
+on its own - you still read the line and press enter yourself.
+
+| Shell | Add to your startup file |
+| --- | --- |
+| zsh | `eval "$(shelp init zsh)"` in `~/.zshrc` |
+| bash | `eval "$(shelp init bash)"` in `~/.bashrc` |
+| fish | `shelp init fish \| source` in `~/.config/fish/config.fish` |
+| PowerShell | `Invoke-Expression (& shelp init powershell \| Out-String)` in `$PROFILE` |
+
+```
+$ every file bigger than 1GB under this folder     # press ctrl+g
+$ find . -type f -size +1G
+```
+
+Several commands are joined into one line with ` && ` (`; ` in PowerShell). An
+empty line does nothing, and if shelp fails or returns nothing the line is left
+exactly as it was, with the error on stderr.
+
+To bind another key, paste the snippet into your startup file instead of
+eval-ing it and change the binding at the bottom: `bindkey '^G'` (zsh),
+`bind -x '"\C-g": _shelp_widget'` (bash), `bind \cg _shelp_widget` (fish) or
+`-Chord 'Ctrl+g'` (PowerShell).
 
 ### History
 
@@ -339,7 +382,9 @@ tricks. Do not treat "not blocked" as "safe".
   `fdisk`/`parted`, `kill`/`pkill`, `systemctl stop|restart|disable`,
   `service ... stop|restart`, `reboot`/`shutdown`/`init N`, writes into `/etc/`,
   and package installs (`pip install`, `npm install -g`, `brew install`,
-  `apt|yum|dnf install`)
+  `apt|yum|dnf install`); on Windows also `Remove-Item`, `Stop-Service`,
+  `Restart-Computer`/`Stop-Computer`, `Set-ExecutionPolicy`, `reg delete` and
+  `bcdedit`
 - **danger** (red): blocked commands - they cannot be selected or executed
 
 ### Blocked Commands
@@ -361,6 +406,10 @@ stripped before matching, so `cd /tmp && sudo rm -rf /` is still caught.
 - `perl -e '… exec …'` and `python -c '… exec …'`
 - `find /` or `find ~` with `-delete`/`-exec rm` and no narrowing predicate
   (`-name`, `-path`, `-regex`, `-mtime`, `-mmin`, `-newer`, `-size`, `-empty`)
+- Windows: `Remove-Item`/`del`/`erase`/`rd`/`rmdir` (and the `ri`/`rm` aliases)
+  with a recursive or force flag on a drive root (`C:`, `C:\`, `C:\*`, `\`,
+  `$env:SystemDrive`, `$env:USERPROFILE`, `$HOME`, `~`), `format C:`,
+  `Format-Volume`, `Clear-Disk`, `Initialize-Disk` and `diskpart`
 
 ## Known Limitations
 
@@ -370,7 +419,10 @@ stripped before matching, so `cd /tmp && sudo rm -rf /` is still caught.
   instructed to do this).
 - Commands inherit your terminal, so interactive ones work, but shelp cannot
   tell what a command changed once it exits.
-- macOS and Linux only; there is no Windows build.
+- The Windows build is experimental: it is cross-compiled and covered by unit
+  tests, but nothing has run it end to end yet, so expect rough edges - notably
+  argument quoting through `cmd /C` and cancellation, which kills the command
+  instead of interrupting it. macOS and Linux are the tested platforms.
 - `--copy` needs a clipboard tool: `pbcopy` on macOS, `xclip` or `xsel` on Linux.
   Without one it warns and still prints the commands.
 

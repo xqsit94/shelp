@@ -7,8 +7,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/xqsit94/shelp/internal/safety"
@@ -33,8 +33,10 @@ func Execute(ctx context.Context, command, shell string, opts Options) (*Result,
 		return nil, fmt.Errorf("command blocked for safety reasons")
 	}
 
-	cmd := exec.CommandContext(ctx, resolveShell(shell), "-c", command)
-	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	name, args := shellArgs(resolveShell(shell), command)
+
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Cancel = func() error { return cancelProcess(cmd) }
 	cmd.WaitDelay = waitDelay
 
 	cmd.Dir, _ = os.Getwd()
@@ -68,10 +70,7 @@ func Execute(ctx context.Context, command, shell string, opts Options) (*Result,
 			return nil, fmt.Errorf("failed to execute command: %v", err)
 		}
 
-		result.ExitCode = exitErr.ExitCode()
-		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
-			result.ExitCode = 128 + int(status.Signal())
-		}
+		result.ExitCode = exitCodeOf(exitErr)
 	}
 
 	return result, nil
@@ -81,33 +80,47 @@ func Execute(ctx context.Context, command, shell string, opts Options) (*Result,
 // server), so fall back to the one shell that is always present.
 func resolveShell(shell string) string {
 	if shell == "" {
-		shell = "bash"
+		shell = defaultShell
 	}
 
 	if _, err := exec.LookPath(shell); err != nil {
-		return "sh"
+		return fallbackShell
 	}
 
 	return shell
 }
 
+func shellArgs(shell, command string) (string, []string) {
+	switch shell {
+	case "pwsh", "powershell":
+		return shell, []string{"-NoProfile", "-Command", command}
+	case "cmd":
+		return shell, []string{"/C", command}
+	default:
+		return shell, []string{"-c", command}
+	}
+}
+
 func DetectShell() string {
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		return "bash"
+	return detectShell(runtime.GOOS, os.Getenv("SHELL"), exec.LookPath)
+}
+
+// Windows has no $SHELL, so the best available PowerShell is preferred and
+// cmd is the last resort.
+func detectShell(goos, shellEnv string, lookPath func(string) (string, error)) string {
+	if goos == "windows" {
+		for _, shell := range []string{"pwsh", "powershell"} {
+			if _, err := lookPath(shell); err == nil {
+				return shell
+			}
+		}
+		return "cmd"
 	}
 
-	if strings.HasSuffix(shell, "/zsh") {
-		return "zsh"
-	}
-	if strings.HasSuffix(shell, "/fish") {
-		return "fish"
-	}
-	if strings.HasSuffix(shell, "/bash") {
-		return "bash"
-	}
-	if strings.HasSuffix(shell, "/sh") {
-		return "sh"
+	for _, shell := range []string{"zsh", "fish", "bash", "sh"} {
+		if strings.HasSuffix(shellEnv, "/"+shell) {
+			return shell
+		}
 	}
 
 	return "bash"

@@ -387,6 +387,8 @@ func osHints() string {
 		return `- BSD userland: use "sed -i ''" with an explicit empty backup suffix, "find -E" for extended regex, no GNU-only long options; pbcopy/pbpaste for the clipboard and "open" to open files`
 	case "linux":
 		return `- GNU userland: use "sed -i" without a backup suffix, "find -regextype" for extended regex; xdg-open to open files`
+	case "windows":
+		return `- Windows: for PowerShell use cmdlets (Get-ChildItem, Remove-Item, Copy-Item) and separate steps with ";", not "&&", which Windows PowerShell 5.1 does not support; paths use backslashes. For cmd use dir, del, "rd /s /q"`
 	default:
 		return ""
 	}
