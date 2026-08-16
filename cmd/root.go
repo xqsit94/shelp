@@ -107,6 +107,7 @@ Examples:
 
 	cmd.AddCommand(ConfigCmd())
 	cmd.AddCommand(HistoryCmd())
+	cmd.AddCommand(InitCmd())
 
 	return cmd
 }

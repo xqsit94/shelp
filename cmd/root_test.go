@@ -159,6 +159,46 @@ func TestRootOmitsUnsetSamplingParameters(t *testing.T) {
 	}
 }
 
+// The shell integration hands the whole command line to shelp after --, so a
+// query starting with a dash has to reach the provider untouched.
+func TestRootSendsLiteralQueryAfterDoubleDash(t *testing.T) {
+	bodies := make(chan map[string]any, 1)
+	server := fakeProviderContent(t, `["echo hi"]`, bodies)
+
+	stdout, _, err := runRoot(t, server, "-p", "--", "-x list files")
+	if err != nil {
+		t.Fatalf("Execute() returned error: %v", err)
+	}
+	if stdout != "echo hi\n" {
+		t.Errorf("stdout = %q, want %q", stdout, "echo hi\n")
+	}
+
+	if got := userMessage(t, <-bodies); got != "-x list files" {
+		t.Errorf("query = %q, want %q", got, "-x list files")
+	}
+}
+
+func userMessage(t *testing.T, body map[string]any) string {
+	t.Helper()
+
+	messages, ok := body["messages"].([]any)
+	if !ok {
+		t.Fatalf("request has no messages: %v", body)
+	}
+
+	for _, message := range messages {
+		fields, ok := message.(map[string]any)
+		if ok && fields["role"] == "user" {
+			content, _ := fields["content"].(string)
+			return content
+		}
+	}
+
+	t.Fatalf("request has no user message: %v", body)
+
+	return ""
+}
+
 func TestRootPrintsWithoutTerminal(t *testing.T) {
 	server := fakeProvider(t, "echo hi", "echo bye")
 
