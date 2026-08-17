@@ -10,14 +10,11 @@ func Truncate(s string, max int) string {
 	return ansi.Truncate(s, max, "…")
 }
 
-// writeLine appends s and a line break without building the joined string.
 func writeLine(b *strings.Builder, s string) {
 	b.WriteString(s)
 	b.WriteByte('\n')
 }
 
-// TruncateLines truncates every line of s. The renderer clips overflow
-// silently, which would show the command about to run as a prefix of itself.
 func TruncateLines(s string, max int) string {
 	if max <= 0 {
 		return s
@@ -52,8 +49,6 @@ func IndentUnder(prefix, body string) string {
 	return prefix + IndentLines(body, ansi.StringWidth(prefix))
 }
 
-// indentBlock indents every line of s. Prefixing the string instead would move
-// only the first line of a bordered box.
 func indentBlock(s string, indent int) string {
 	if indent <= 0 {
 		return s

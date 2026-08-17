@@ -41,8 +41,6 @@ func configProfileListCmd() *cobra.Command {
 
 			names := file.Names()
 			if len(names) == 0 {
-				// `config show` still reports a profile name here, because a
-				// run always resolves to one even when nothing is on disk.
 				fmt.Fprintln(cmd.OutOrStdout(), "No profiles saved yet: shelp is using the default profile.")
 				fmt.Fprintln(cmd.OutOrStdout(), "Create one with: shelp config profile add <name>")
 				return nil

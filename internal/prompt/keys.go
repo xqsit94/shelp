@@ -7,9 +7,6 @@ import (
 
 const helpIndent = 2
 
-// renderHelp clips the hints itself: bubbles/help stops eliding as soon as the
-// width it has used leaves no room for its ellipsis, and then emits every
-// remaining binding, which at 40 columns is an 81 column line.
 func renderHelp(h help.Model, k help.KeyMap, width int) string {
 	return indentBlock(TruncateLines(h.View(k), width-helpIndent), helpIndent)
 }
@@ -57,8 +54,6 @@ func defaultListKeyMap() listKeyMap {
 	}
 }
 
-// help elides from the tail when the terminal is too narrow, so the bindings a
-// screen cannot be finished without come first.
 func (k listKeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{k.Execute, k.Quit, k.Up, k.Down, k.Toggle, k.Edit, k.Regenerate, k.Help}
 }
@@ -94,7 +89,6 @@ func defaultConfirmKeyMap() confirmKeyMap {
 	}
 }
 
-// A blocked command cannot be run, so y is withheld rather than offered and refused.
 func (k confirmKeyMap) shortHelpFor(blocked bool) []key.Binding {
 	if blocked {
 		return []key.Binding{k.Select, k.Quit, k.Up, k.Down, k.Edit, k.Regenerate}

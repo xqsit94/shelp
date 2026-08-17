@@ -1,0 +1,57 @@
+===== final =====
+  ▲ Execution cancelled.
+
+===== final~styles =====
+L00: col2 '▲ Execution cancelled.' fg=f59e0b
+
+===== header-scrolled-off =====
+├─ [●] echo step-03
+│     ● safe — Prints step 3
+├─ [●] echo step-04
+│     ● safe — Prints step 4
+├─ [●] echo step-05
+│     ● safe — Prints step 5
+├─ [●] echo step-06
+│     ● safe — Prints step 6
+├─ [●] echo step-07
+│     ● safe — Prints step 7
+├─ [●] echo step-08
+│     ● safe — Prints step 8
+├─ [●] echo step-09
+│     ● safe — Prints step 9
+├─ [●] echo step-10
+│     ● safe — Prints step 10
+├─ [●] echo step-11
+│     ● safe — Prints step 11
+└─ [●] echo step-12
+      ● safe — Prints step 12
+
+  12 of 12 selected
+
+                     ↑/↓: navigate • space: toggle • a: all • n: none • e: edit • r: regenerate • en
+
+===== header-scrolled-off~styles =====
+L00: col0 '├─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'echo step-03' fg=ffffff
+L01: col0 '│' fg=4b5563; col8 'safe' fg=22c55e bold; col13 '— Prints step 3' fg=6b7180
+L02: col0 '├─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'echo step-04' fg=ffffff
+L03: col0 '│' fg=4b5563; col8 'safe' fg=22c55e bold; col13 '— Prints step 4' fg=6b7180
+L04: col0 '├─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'echo step-05' fg=ffffff
+L05: col0 '│' fg=4b5563; col8 'safe' fg=22c55e bold; col13 '— Prints step 5' fg=6b7180
+L06: col0 '├─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'echo step-06' fg=ffffff
+L07: col0 '│' fg=4b5563; col8 'safe' fg=22c55e bold; col13 '— Prints step 6' fg=6b7180
+L08: col0 '├─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'echo step-07' fg=ffffff
+L09: col0 '│' fg=4b5563; col8 'safe' fg=22c55e bold; col13 '— Prints step 7' fg=6b7180
+L10: col0 '├─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'echo step-08' fg=ffffff
+L11: col0 '│' fg=4b5563; col8 'safe' fg=22c55e bold; col13 '— Prints step 8' fg=6b7180
+L12: col0 '├─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'echo step-09' fg=ffffff
+L13: col0 '│' fg=4b5563; col8 'safe' fg=22c55e bold; col13 '— Prints step 9' fg=6b7180
+L14: col0 '├─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'echo step-10' fg=ffffff
+L15: col0 '│' fg=4b5563; col8 'safe' fg=22c55e bold; col13 '— Prints step 10' fg=6b7180
+L16: col0 '├─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'echo step-11' fg=ffffff
+L17: col0 '│' fg=4b5563; col8 'safe' fg=22c55e bold; col13 '— Prints step 11' fg=6b7180
+L18: col0 '└─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'echo step-12' fg=ffffff
+L19: col8 'safe' fg=22c55e bold; col13 '— Prints step 12' fg=6b7180
+L21: col2 '12 of 12 selected' fg=6b7180
+L23: col21 '↑/↓: navigate • space: toggle • a: all • n: none • e: edit • r: regenerate • en' fg=6b7180
+
+exit=130 signal=None

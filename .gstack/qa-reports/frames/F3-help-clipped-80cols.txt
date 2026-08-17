@@ -1,0 +1,32 @@
+===== final =====
+  ▲ Execution cancelled.
+
+===== final~styles =====
+L00: col2 '▲ Execution cancelled.' fg=f59e0b
+
+===== frame =====
+
+Generated Commands (3)
+├─ [●] docker compose down
+│     ● safe — Stops and removes the running containers
+├─ [●] docker compose pull
+│     ● safe — Fetches the newest images for every service
+└─ [●] docker compose up -d
+      ● safe — Recreates the stack in the background
+
+  3 of 3 selected
+
+                   ↑/↓: navigate • space: toggle • a: all • n: none • e: edit •
+
+===== frame~styles =====
+L01: col0 'Generated Commands (3)' fg=06b6d3 bold
+L02: col0 '├─' fg=7c3aed bold; col3 '[●]' fg=22c55e bold; col7 'docker compose down' fg=ffffff
+L03: col0 '│' fg=7c3aed bold; col8 'safe' fg=22c55e bold; col13 '— Stops and removes the running containers' fg=6b7180
+L04: col0 '├─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'docker compose pull' fg=ffffff
+L05: col0 '│' fg=4b5563; col8 'safe' fg=22c55e bold; col13 '— Fetches the newest images for every service' fg=6b7180
+L06: col0 '└─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'docker compose up -d' fg=ffffff
+L07: col8 'safe' fg=22c55e bold; col13 '— Recreates the stack in the background' fg=6b7180
+L09: col2 '3 of 3 selected' fg=6b7180
+L11: col19 '↑/↓: navigate • space: toggle • a: all • n: none • e: edit • ' fg=6b7180
+
+exit=130 signal=None

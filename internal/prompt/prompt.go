@@ -73,8 +73,6 @@ func DisplayRunning(index, total int, command string) {
 	fmt.Println()
 }
 
-// DisplayStepResult reports a failure as it happens, so the "continue?"
-// question does not arrive before any sign that something went wrong.
 func DisplayStepResult(exitCode int, interrupted bool, err error) {
 	switch {
 	case err != nil:

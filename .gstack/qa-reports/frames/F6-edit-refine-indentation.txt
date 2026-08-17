@@ -1,0 +1,38 @@
+===== edit-mode =====
+
+Edit command
+  1 of 3
+
+          > docker compose down
+
+  enter: save • esc: cancel
+
+===== edit-mode~styles =====
+L01: col0 'Edit command' fg=7c3aed bold
+L02: col2 '1 of 3' fg=6b7180
+L06: col2 'enter: save • esc: cancel' fg=6b7180
+
+===== final =====
+  ▲ Execution cancelled.
+
+===== final~styles =====
+L00: col2 '▲ Execution cancelled.' fg=f59e0b
+
+===== refine-mode =====
+
+Refine your request
+  Original: "restart the docker stack"
+
+                                        Add to your request (or press Enter to retry):
+                                                  > add refinement here...
+
+  enter: regenerate • esc: cancel
+
+===== refine-mode~styles =====
+L01: col0 'Refine your request' fg=7c3aed bold
+L02: col2 'Original: "restart the docker stack"' fg=6b7180
+L04: col40 'Add to your request (or press Enter to retry):' fg=06b6d3
+L05: col52 'add refinement here...                          ' fg=585858
+L07: col2 'enter: regenerate • esc: cancel' fg=6b7180
+
+exit=130 signal=None

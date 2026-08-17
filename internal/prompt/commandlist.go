@@ -33,8 +33,6 @@ const (
 	minVisibleRows = 1
 )
 
-// visibleRange derives the window to draw from the cursor rather than storing
-// a scroll offset, so the two cannot drift apart.
 func visibleRange(count, cursor, availableRows int) (start, end int) {
 	if availableRows <= 0 || count*rowsPerCommand <= availableRows {
 		return 0, count
@@ -276,7 +274,6 @@ func (m commandListModel) View() string {
 			connectorStyle = treeConnectorActiveStyle
 		}
 
-		// The caret is what identifies the focused row without colour.
 		gutter := "  "
 		if isActive {
 			gutter = cursorStyle.Render("❯ ")
