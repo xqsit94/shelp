@@ -344,9 +344,11 @@ func testConnection(cmd *cobra.Command, cfg *config.Config) error {
 		cfg.AIURL, cfg.Model, len(suggestions), elapsed))
 
 	if len(suggestions) > 0 {
-		fmt.Println(prompt.IndentUnder("  "+prompt.TreeStyle.Render(prompt.TreeLastBranch)+" ", prompt.HighlightCommand(suggestions[0].Command)))
+		out := cmd.OutOrStdout()
+		command := prompt.HighlightFor(out, suggestions[0].Command)
+		fmt.Fprintln(out, prompt.IndentUnder("  "+prompt.TreeStyle.Render(prompt.TreeLastBranch)+" ", command))
 		if explanation := suggestions[0].Explanation; explanation != "" {
-			fmt.Println(prompt.Truncate("     "+prompt.ExplanationStyle.Render(explanation), prompt.GetTerminalWidth()))
+			fmt.Fprintln(out, prompt.Truncate("     "+prompt.ExplanationStyle.Render(explanation), prompt.GetTerminalWidth()))
 		}
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -24,6 +25,9 @@ type setupModel struct {
 	totalSteps int
 	cancelled  bool
 	done       bool
+	keys       setupKeyMap
+	help       help.Model
+	width      int
 }
 
 func newSetupModel() setupModel {
@@ -52,12 +56,18 @@ func newSetupModel() setupModel {
 
 	inputs[0].Focus()
 
+	width := GetTerminalWidth()
+	h := newHelpModel(width)
+
 	return setupModel{
 		inputs:     inputs,
 		labels:     labels,
 		focusIndex: 0,
 		step:       1,
 		totalSteps: 3,
+		keys:       defaultSetupKeyMap(),
+		help:       h,
+		width:      width,
 	}
 }
 
@@ -67,6 +77,10 @@ func (m setupModel) Init() tea.Cmd {
 
 func (m setupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.help.Width = msg.Width
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":
@@ -160,7 +174,9 @@ func (m setupModel) View() string {
 	)
 
 	headerBox := welcomeBoxStyle.Render(header)
-	b.WriteString("\n" + headerBox + "\n\n")
+	b.WriteByte('\n')
+	writeLine(&b, headerBox)
+	b.WriteByte('\n')
 
 	for i, input := range m.inputs {
 		lblStyle := hintStyle
@@ -168,16 +184,19 @@ func (m setupModel) View() string {
 			lblStyle = infoStyle.Bold(true)
 		}
 
-		b.WriteString("  " + lblStyle.Render(m.labels[i]+":") + "\n")
+		b.WriteString("  ")
+		writeLine(&b, lblStyle.Render(m.labels[i]+":"))
 
 		inputBox := inputStyle
 		if i == m.focusIndex {
 			inputBox = inputFocusedStyle
 		}
-		b.WriteString("  " + inputBox.Render(input.View()) + "\n\n")
+		writeLine(&b, indentBlock(inputBox.Render(input.View()), 2))
+		b.WriteByte('\n')
 	}
 
-	b.WriteString("\n" + helpStyle.Render("  tab/↓: next • shift+tab/↑: prev • enter: submit • esc: cancel"))
+	b.WriteByte('\n')
+	b.WriteString(renderHelp(m.help, m.keys, m.width))
 
 	return b.String()
 }

@@ -10,6 +10,26 @@ func Truncate(s string, max int) string {
 	return ansi.Truncate(s, max, "…")
 }
 
+func writeLine(b *strings.Builder, s string) {
+	b.WriteString(s)
+	b.WriteByte('\n')
+}
+
+func TruncateLines(s string, max int) string {
+	if max <= 0 {
+		return s
+	}
+	if !strings.Contains(s, "\n") {
+		return Truncate(s, max)
+	}
+
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = Truncate(line, max)
+	}
+	return strings.Join(lines, "\n")
+}
+
 // Oneline collapses a multi-line command into a single line so it fits in a
 // tree row.
 func Oneline(s string) string {
@@ -27,4 +47,17 @@ func IndentLines(s string, indent int) string {
 
 func IndentUnder(prefix, body string) string {
 	return prefix + IndentLines(body, ansi.StringWidth(prefix))
+}
+
+func indentBlock(s string, indent int) string {
+	if indent <= 0 {
+		return s
+	}
+
+	pad := strings.Repeat(" ", indent)
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = pad + line
+	}
+	return strings.Join(lines, "\n")
 }

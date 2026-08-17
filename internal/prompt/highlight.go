@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"bytes"
+	"io"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2"
@@ -9,6 +10,7 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // Resolved once at package init: HasDarkBackground queries the terminal over
@@ -17,6 +19,8 @@ var (
 	bashLexer       = newBashLexer()
 	chromaStyle     = newChromaStyle()
 	chromaFormatter = formatters.Get("terminal256")
+
+	highlightEnabled = lipgloss.ColorProfile() != termenv.Ascii
 )
 
 func newBashLexer() chroma.Lexer {
@@ -34,8 +38,15 @@ func newChromaStyle() *chroma.Style {
 	return styles.Get("github")
 }
 
+func HighlightFor(w io.Writer, command string) string {
+	if !IsTerminalWriter(w) {
+		return command
+	}
+	return HighlightCommand(command)
+}
+
 func HighlightCommand(command string) string {
-	if bashLexer == nil {
+	if bashLexer == nil || !highlightEnabled {
 		return command
 	}
 

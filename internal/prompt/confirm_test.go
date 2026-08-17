@@ -33,7 +33,7 @@ func TestConfirmExecuteOnEnter(t *testing.T) {
 }
 
 func TestConfirmEdit(t *testing.T) {
-	m := send(t, newConfirmModel(Suggestion{Command: "ls"}), key("e"), key(" -la"), enter)
+	m := send(t, newConfirmModel(Suggestion{Command: "ls"}), typed("e"), typed(" -la"), enter)
 
 	if m.command != "ls -la" {
 		t.Errorf("command = %q, want %q", m.command, "ls -la")
@@ -45,7 +45,7 @@ func TestConfirmEdit(t *testing.T) {
 		t.Errorf("mode = %v, want the menu", m.mode)
 	}
 
-	m = send(t, m, key("y"))
+	m = send(t, m, typed("y"))
 
 	if !m.done || m.selected != ConfirmExecute {
 		t.Errorf("selected = %v, done = %v, want Execute", m.selected, m.done)
@@ -53,7 +53,7 @@ func TestConfirmEdit(t *testing.T) {
 }
 
 func TestConfirmEditEscapeKeepsCommand(t *testing.T) {
-	m := send(t, newConfirmModel(Suggestion{Command: "ls"}), key("e"), key(" -la"), esc)
+	m := send(t, newConfirmModel(Suggestion{Command: "ls"}), typed("e"), typed(" -la"), esc)
 
 	if m.command != "ls" {
 		t.Errorf("command = %q, want it unchanged", m.command)
@@ -64,7 +64,7 @@ func TestConfirmEditEscapeKeepsCommand(t *testing.T) {
 }
 
 func TestConfirmEditIntoBlockedCommand(t *testing.T) {
-	m := send(t, newConfirmModel(Suggestion{Command: "ls"}), key("e"), key(" && rm -rf /"), enter)
+	m := send(t, newConfirmModel(Suggestion{Command: "ls"}), typed("e"), typed(" && rm -rf /"), enter)
 
 	if !m.blocked {
 		t.Fatal("blocked = false after editing into a blocked command")
@@ -76,7 +76,7 @@ func TestConfirmEditIntoBlockedCommand(t *testing.T) {
 		t.Errorf("choices = %v, want Execute removed", m.choices)
 	}
 
-	m = send(t, m, key("y"))
+	m = send(t, m, typed("y"))
 
 	if m.done {
 		t.Error("y executed a blocked command")
@@ -98,7 +98,7 @@ func TestConfirmBlockedCommandMenu(t *testing.T) {
 }
 
 func TestConfirmRegenerateWithRefinement(t *testing.T) {
-	m := send(t, newConfirmModel(Suggestion{Command: "ls"}), key("r"), key("use find"), enter)
+	m := send(t, newConfirmModel(Suggestion{Command: "ls"}), typed("r"), typed("use find"), enter)
 
 	if !m.done || m.selected != ConfirmRegenerate {
 		t.Fatalf("selected = %v, done = %v, want Regenerate", m.selected, m.done)
@@ -123,7 +123,7 @@ func TestConfirmRegenerateFromMenuCursor(t *testing.T) {
 }
 
 func TestConfirmCancel(t *testing.T) {
-	m := send(t, newConfirmModel(Suggestion{Command: "ls"}), key("q"))
+	m := send(t, newConfirmModel(Suggestion{Command: "ls"}), typed("q"))
 
 	if !m.done || m.selected != ConfirmCancel {
 		t.Errorf("selected = %v, done = %v, want Cancel", m.selected, m.done)
@@ -141,7 +141,7 @@ func TestConfirmViewShowsExplanation(t *testing.T) {
 func TestConfirmEditDropsExplanation(t *testing.T) {
 	m := newConfirmModel(Suggestion{Command: "ls", Explanation: "Lists files"})
 
-	m = send(t, m, key("e"), key(" -la"), enter)
+	m = send(t, m, typed("e"), typed(" -la"), enter)
 
 	if m.explanation != "" {
 		t.Errorf("explanation = %q, want it dropped after an edit", m.explanation)

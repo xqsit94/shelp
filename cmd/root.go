@@ -190,6 +190,23 @@ func runSuggestions(cmd *cobra.Command, suggestions []ai.Suggestion, query, shel
 	return false, "", executeSelectedCommands(ctx, result.SelectedCommands, shell, false)
 }
 
+func remediationHint(err error) string {
+	message := err.Error()
+
+	switch {
+	case strings.Contains(message, "status 401"), strings.Contains(message, "status 403"):
+		return "Check the API key for this provider: shelp config set key"
+	case strings.Contains(message, "status 404"):
+		return "Check the endpoint and model: shelp config show, then shelp config set url|model"
+	case strings.Contains(message, "status 429"):
+		return "The provider is rate limiting. Wait a moment and try again."
+	case strings.Contains(message, "no such host"), strings.Contains(message, "connection refused"):
+		return "Could not reach the provider. Check the URL and your network: shelp config test"
+	default:
+		return ""
+	}
+}
+
 func generateCommands(ctx context.Context, client *ai.Client, request ai.Request) ([]ai.Suggestion, error) {
 	suggestions, err := prompt.RunWithSpinner(ctx, "Generating commands...", func(ctx context.Context) ([]ai.Suggestion, error) {
 		return client.GenerateCommands(ctx, request)
@@ -201,6 +218,9 @@ func generateCommands(ctx context.Context, client *ai.Client, request ai.Request
 			return nil, &ExitError{Code: exitCancelled}
 		}
 		prompt.DisplayError(fmt.Sprintf("Failed to generate commands: %v", err))
+		if hint := remediationHint(err); hint != "" {
+			prompt.DisplayHint(hint)
+		}
 		return nil, &ExitError{Code: 1}
 	}
 
@@ -388,6 +408,8 @@ func executeSelectedCommands(ctx context.Context, commands []string, shell strin
 		}
 		results = append(results, result)
 
+		prompt.DisplayStepResult(result.exitCode, result.interrupted, result.execErr)
+
 		if result.interrupted || ctx.Err() != nil {
 			break
 		}
@@ -398,6 +420,7 @@ func executeSelectedCommands(ctx context.Context, commands []string, shell strin
 				prompt.DisplayWarning("Stopping: the previous command failed.")
 				break
 			}
+			fmt.Println()
 			if !prompt.ConfirmYesNoInteractive("Continue with next command?") {
 				break
 			}

@@ -1,0 +1,68 @@
+===== after-false-fails =====
+
+├─ [1/3] printf 'line one\nline two\n'
+
+line one
+line two
+
+├─ [2/3] false
+
+Continue with next command?
+
+[Yes]   No
+
+←/→: navigate • enter: select • y/n: quick select
+
+===== after-false-fails~styles =====
+L01: col0 '├─' fg=4b5563; col3 '[1/3]' fg=6b7180; col9 'printf ' fg=ffffff; col16 "'line one\\nline two\\n'" fg=d7d787
+L06: col0 '├─' fg=4b5563; col3 '[2/3]' fg=6b7180; col9 'false' fg=ffffff
+L10: col0 '[' fg=7c3aed bold; col1 'Yes' fg=06b6d3 bold; col4 ']' fg=7c3aed bold; col8 'No' fg=9ca3af
+L12: col0 '←/→: navigate • enter: select • y/n: quick select' fg=6b7180
+
+===== final =====
+
+├─ [1/3] printf 'line one\nline two\n'
+
+line one
+line two
+
+├─ [2/3] false
+
+Continue with next command?
+
+[Yes]   No
+
+←/→: navigate • enter: select • y/n: quick select
+
+===== final~styles =====
+L01: col0 '├─' fg=4b5563; col3 '[1/3]' fg=6b7180; col9 'printf ' fg=ffffff; col16 "'line one\\nline two\\n'" fg=d7d787
+L06: col0 '├─' fg=4b5563; col3 '[2/3]' fg=6b7180; col9 'false' fg=ffffff
+L10: col0 '[' fg=7c3aed bold; col1 'Yes' fg=06b6d3 bold; col4 ']' fg=7c3aed bold; col8 'No' fg=9ca3af
+L12: col0 '←/→: navigate • enter: select • y/n: quick select' fg=6b7180
+
+===== list =====
+
+Generated Commands (3)
+├─ [●] printf 'line one\nline two\n'
+│     ● safe — Writes two lines
+├─ [●] false
+│     ● safe — Exits non-zero on purpose
+└─ [●] echo after-failure
+      ● safe — Should only run if you continue
+
+  3 of 3 selected
+
+                   ↑/↓: navigate • space: toggle • a: all • n: none • e: edit • r: regenerate • ente
+
+===== list~styles =====
+L01: col0 'Generated Commands (3)' fg=06b6d3 bold
+L02: col0 '├─' fg=7c3aed bold; col3 '[●]' fg=22c55e bold; col7 'printf ' fg=ffffff; col14 "'line one\\nline two\\n'" fg=d7d787
+L03: col0 '│' fg=7c3aed bold; col8 'safe' fg=22c55e bold; col13 '— Writes two lines' fg=6b7180
+L04: col0 '├─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'false' fg=ffffff
+L05: col0 '│' fg=4b5563; col8 'safe' fg=22c55e bold; col13 '— Exits non-zero on purpose' fg=6b7180
+L06: col0 '└─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'echo after-failure' fg=ffffff
+L07: col8 'safe' fg=22c55e bold; col13 '— Should only run if you continue' fg=6b7180
+L09: col2 '3 of 3 selected' fg=6b7180
+L11: col19 '↑/↓: navigate • space: toggle • a: all • n: none • e: edit • r: regenerate • ente' fg=6b7180
+
+exit=0 signal=None

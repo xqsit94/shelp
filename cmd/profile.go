@@ -41,7 +41,8 @@ func configProfileListCmd() *cobra.Command {
 
 			names := file.Names()
 			if len(names) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No profiles configured yet.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No profiles saved yet: shelp is using the default profile.")
+				fmt.Fprintln(cmd.OutOrStdout(), "Create one with: shelp config profile add <name>")
 				return nil
 			}
 

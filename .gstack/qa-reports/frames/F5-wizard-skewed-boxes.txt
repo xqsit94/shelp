@@ -1,0 +1,61 @@
+===== final =====
+Error: setup cancelled
+
+===== final~styles =====
+
+
+===== wizard =====
+
+╭──────────────────────────────────╮
+│                                  │
+│  Welcome to shelp!               │
+│  Let's set up your AI provider.  │
+│                                  │
+│  Step 1 of 3                     │
+│  ▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱            │
+│                                  │
+╰──────────────────────────────────╯
+
+  AI API URL:
+  ┌───────────────────────────────────────────────────────┐
+│ > https://openrouter.ai/api/v1/chat/completions       │
+└───────────────────────────────────────────────────────┘
+
+  API Key:
+  ┌───────────────────────────────────────────────────────┐
+│ > sk-or-v1-...                                        │
+└───────────────────────────────────────────────────────┘
+
+  Model:
+  ┌───────────────────────────────────────────────────────┐
+│ > anthropic/claude-3.5-sonnet                         │
+└───────────────────────────────────────────────────────┘
+
+
+  tab/↓: next • shift+tab/↑: prev • enter: submit • esc: cancel
+
+===== wizard~styles =====
+L01: col0 '╭──────────────────────────────────╮' fg=7c3aed
+L02: col0 '│' fg=7c3aed; col35 '│' fg=7c3aed
+L03: col0 '│' fg=7c3aed; col3 'Welcome to shelp!' fg=7c3aed bold; col35 '│' fg=7c3aed
+L04: col0 '│' fg=7c3aed; col3 "Let's set up your AI provider." fg=6b7180; col35 '│' fg=7c3aed
+L05: col0 '│' fg=7c3aed; col35 '│' fg=7c3aed
+L06: col0 '│' fg=7c3aed; col3 'Step 1 of 3' fg=9ca3af; col35 '│' fg=7c3aed
+L07: col0 '│' fg=7c3aed; col3 '▰▰▰▰▰▰' fg=7c3aed; col9 '▱▱▱▱▱▱▱▱▱▱▱▱▱▱' fg=374151; col35 '│' fg=7c3aed
+L08: col0 '│' fg=7c3aed; col35 '│' fg=7c3aed
+L09: col0 '╰──────────────────────────────────╯' fg=7c3aed
+L11: col2 'AI API URL:' fg=06b6d3 bold
+L12: col2 '┌───────────────────────────────────────────────────────┐' fg=7c3aed
+L13: col0 '│' fg=7c3aed; col4 'h' fg=default reverse; col5 'ttps://openrouter.ai/api/v1/chat/completions      ' fg=585858; col56 '│' fg=7c3aed
+L14: col0 '└───────────────────────────────────────────────────────┘' fg=7c3aed
+L16: col2 'API Key:' fg=6b7180
+L17: col2 '┌───────────────────────────────────────────────────────┐' fg=4b5563
+L18: col0 '│' fg=4b5563; col4 'sk-or-v1-...                                       ' fg=585858; col56 '│' fg=4b5563
+L19: col0 '└───────────────────────────────────────────────────────┘' fg=4b5563
+L21: col2 'Model:' fg=6b7180
+L22: col2 '┌───────────────────────────────────────────────────────┐' fg=4b5563
+L23: col0 '│' fg=4b5563; col4 'anthropic/claude-3.5-sonnet                        ' fg=585858; col56 '│' fg=4b5563
+L24: col0 '└───────────────────────────────────────────────────────┘' fg=4b5563
+L27: col2 'tab/↓: next • shift+tab/↑: prev • enter: submit • esc: cancel' fg=6b7180
+
+exit=130 signal=None

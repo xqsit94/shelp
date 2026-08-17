@@ -94,7 +94,7 @@ func showHistory(cmd *cobra.Command, limit int) error {
 func commandStatus(entry history.Entry, index int) string {
 	switch {
 	case !entry.Executed:
-		return prompt.ExplanationStyle.Render("–")
+		return prompt.ExplanationStyle.Render("(not run)")
 	case entry.ExitCode != 0 && index == len(entry.Commands)-1:
 		return prompt.DangerStyle.Render(fmt.Sprintf("%s (exit %d)", prompt.IconError, entry.ExitCode))
 	default:

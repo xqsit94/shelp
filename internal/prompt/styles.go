@@ -95,8 +95,10 @@ var (
 
 	// Help/Hint styles
 	helpStyle = lipgloss.NewStyle().
-			Foreground(colorTextMuted).
-			Italic(true)
+			Foreground(colorTextMuted)
+
+	helpKeyStyle = lipgloss.NewStyle().
+			Foreground(colorTextDim)
 
 	hintStyle = lipgloss.NewStyle().
 			Foreground(colorTextMuted)

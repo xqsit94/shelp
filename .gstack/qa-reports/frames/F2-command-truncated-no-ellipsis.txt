@@ -1,0 +1,28 @@
+===== at-80-cols =====
+
+Generated Commands (2)
+├─ [●] find /var/log -type f -name '*.log' -mtime +30 -exec gzip -9 {} \; -print
+│     ● safe — Compresses log files older than thirty days and counts them, whi…
+└─ [●] awk 'BEGIN{FS=OFS=","} NR>1 {sum[$2]+=$5} END{for (k in sum) print k, sum
+      ● safe — Sums the fifth column grouped by the second
+
+  2 of 2 selected
+
+                   ↑/↓: navigate • space: toggle • a: all • n: none • e: edit •
+
+===== at-80-cols~styles =====
+L01: col0 'Generated Commands (2)' fg=06b6d3 bold
+L02: col0 '├─' fg=7c3aed bold; col3 '[●]' fg=22c55e bold; col7 'find /var/log -type f -name ' fg=ffffff; col35 "'*.log'" fg=d7d787; col43 '-mtime +30 -exec gzip -9 ' fg=ffffff; col68 '{}' fg=ff005f; col71 '\\;' fg=af87ff; col74 '-print' fg=ffffff
+L03: col0 '│' fg=7c3aed bold; col8 'safe' fg=22c55e bold; col13 '— Compresses log files older than thirty days and counts them, whi…' fg=6b7180
+L04: col0 '└─' fg=4b5563; col3 '[●]' fg=22c55e bold; col7 'awk ' fg=ffffff; col11 '\'BEGIN{FS=OFS=","} NR>1 {sum[$2]+=$5} END{for (k in sum) print k, sum' fg=d7d787
+L05: col8 'safe' fg=22c55e bold; col13 '— Sums the fifth column grouped by the second' fg=6b7180
+L07: col2 '2 of 2 selected' fg=6b7180
+L09: col19 '↑/↓: navigate • space: toggle • a: all • n: none • e: edit • ' fg=6b7180
+
+===== final =====
+  ▲ Execution cancelled.
+
+===== final~styles =====
+L00: col2 '▲ Execution cancelled.' fg=f59e0b
+
+exit=130 signal=None

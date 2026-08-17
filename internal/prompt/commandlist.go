@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/xqsit94/shelp/internal/safety"
@@ -23,6 +25,27 @@ type CommandItem struct {
 	Selected    bool
 }
 
+const maxQueryPreview = 60
+
+const (
+	rowsPerCommand = 2
+	listChromeRows = 8
+	minVisibleRows = 1
+)
+
+func visibleRange(count, cursor, availableRows int) (start, end int) {
+	if availableRows <= 0 || count*rowsPerCommand <= availableRows {
+		return 0, count
+	}
+
+	visible := max(availableRows/rowsPerCommand, minVisibleRows)
+
+	start = cursor - visible/2
+	start = min(max(start, 0), count-visible)
+
+	return start, start + visible
+}
+
 type listMode int
 
 const (
@@ -40,6 +63,12 @@ type commandListModel struct {
 	mode          listMode
 	originalQuery string
 	textInput     textinput.Model
+	keys          listKeyMap
+	editKeys      inputKeyMap
+	refineKeys    inputKeyMap
+	help          help.Model
+	width         int
+	height        int
 }
 
 func newCommandListModel(suggestions []Suggestion, originalQuery string) commandListModel {
@@ -53,16 +82,25 @@ func newCommandListModel(suggestions []Suggestion, originalQuery string) command
 		}
 	}
 
+	width := GetTerminalWidth()
+
 	ti := textinput.New()
 	ti.Placeholder = "add refinement here..."
 	ti.CharLimit = 200
-	ti.Width = GetTerminalWidth() - 6
+	ti.Width = width - 6
+
+	h := newHelpModel(width)
 
 	return commandListModel{
 		commands:      items,
 		cursor:        0,
 		originalQuery: originalQuery,
 		textInput:     ti,
+		keys:          defaultListKeyMap(),
+		editKeys:      newInputKeyMap("save"),
+		refineKeys:    newInputKeyMap("regenerate"),
+		help:          h,
+		width:         width,
 	}
 }
 
@@ -70,7 +108,19 @@ func (m commandListModel) Init() tea.Cmd {
 	return nil
 }
 
+func (m commandListModel) setSize(width, height int) commandListModel {
+	m.width = width
+	m.height = height
+	m.help.Width = width
+	m.textInput.Width = width - 6
+	return m
+}
+
 func (m commandListModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		return m.setSize(size.Width, size.Height), nil
+	}
+
 	switch m.mode {
 	case listModeRegenerate:
 		return m.updateRegenerateMode(msg)
@@ -80,46 +130,48 @@ func (m commandListModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "up", "k":
+		switch {
+		case key.Matches(msg, m.keys.Up):
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case "down", "j":
+		case key.Matches(msg, m.keys.Down):
 			if m.cursor < len(m.commands)-1 {
 				m.cursor++
 			}
-		case " ":
+		case key.Matches(msg, m.keys.Toggle):
 			if !safety.IsBlocked(m.commands[m.cursor].Command) {
 				m.commands[m.cursor].Selected = !m.commands[m.cursor].Selected
 			}
-		case "a":
+		case key.Matches(msg, m.keys.All):
 			for i := range m.commands {
 				if !safety.IsBlocked(m.commands[i].Command) {
 					m.commands[i].Selected = true
 				}
 			}
-		case "n":
+		case key.Matches(msg, m.keys.None):
 			for i := range m.commands {
 				m.commands[i].Selected = false
 			}
-		case "e":
+		case key.Matches(msg, m.keys.Help):
+			m.help.ShowAll = !m.help.ShowAll
+		case key.Matches(msg, m.keys.Edit):
 			m.mode = listModeEdit
 			m.textInput.Placeholder = "edit the command..."
 			m.textInput.CharLimit = 0
 			m.textInput.SetValue(m.commands[m.cursor].Command)
 			m.textInput.CursorEnd()
 			return m, tea.Batch(m.textInput.Focus(), textinput.Blink)
-		case "r":
+		case key.Matches(msg, m.keys.Regenerate):
 			m.mode = listModeRegenerate
 			m.textInput.Placeholder = "add refinement here..."
 			m.textInput.CharLimit = 200
 			m.textInput.SetValue("")
 			return m, tea.Batch(m.textInput.Focus(), textinput.Blink)
-		case "enter":
+		case key.Matches(msg, m.keys.Execute):
 			m.confirmed = true
 			return m, tea.Quit
-		case "q", "ctrl+c", "esc":
+		case key.Matches(msg, m.keys.Quit):
 			m.cancelled = true
 			return m, tea.Quit
 		}
@@ -197,9 +249,18 @@ func (m commandListModel) View() string {
 	title := fmt.Sprintf("Generated Commands (%d)", len(m.commands))
 	cmdTitleStyle := TitleBoldStyle.Foreground(ColorInfo)
 
-	b.WriteString("\n" + cmdTitleStyle.Render(title) + "\n")
+	b.WriteByte('\n')
+	writeLine(&b, cmdTitleStyle.Render(title))
 
-	for i, item := range m.commands {
+	width := m.width
+
+	start, end := visibleRange(len(m.commands), m.cursor, m.height-listChromeRows)
+	if start > 0 {
+		writeLine(&b, hintStyle.Render(fmt.Sprintf("  ↑ %d more", start)))
+	}
+
+	for i, item := range m.commands[start:end] {
+		i += start
 		isLast := i == len(m.commands)-1
 		isActive := m.cursor == i
 
@@ -213,16 +274,22 @@ func (m commandListModel) View() string {
 			connectorStyle = treeConnectorActiveStyle
 		}
 
-		checkbox := checkboxUncheckedStyle.Render("[○]")
+		gutter := "  "
+		if isActive {
+			gutter = cursorStyle.Render("❯ ")
+		}
+
+		checkbox := checkboxUncheckedStyle.Render("[ ]")
 		if item.Selected {
-			checkbox = checkboxCheckedStyle.Render("[●]")
+			checkbox = checkboxCheckedStyle.Render("[✓]")
 		}
 		if safety.IsBlocked(item.Command) {
 			checkbox = checkboxBlockedStyle.Render("[⊘]")
 		}
 
-		prefix := fmt.Sprintf("%s %s ", connectorStyle.Render(branch), checkbox)
-		b.WriteString(IndentUnder(prefix, HighlightCommand(item.Command)) + "\n")
+		prefix := fmt.Sprintf("%s%s %s ", gutter, connectorStyle.Render(branch), checkbox)
+		commandLine := IndentUnder(prefix, HighlightCommand(item.Command))
+		writeLine(&b, TruncateLines(commandLine, width))
 
 		verticalLine := TreeVertical
 		if isLast {
@@ -237,7 +304,7 @@ func (m commandListModel) View() string {
 			riskText = riskStyle.Render(string(item.Risk) + " (blocked)")
 		}
 
-		riskLine := fmt.Sprintf("%s     %s %s",
+		riskLine := fmt.Sprintf("  %s     %s %s",
 			connectorStyle.Render(verticalLine),
 			riskEmoji,
 			riskText,
@@ -245,7 +312,11 @@ func (m commandListModel) View() string {
 		if item.Explanation != "" {
 			riskLine += ExplanationStyle.Render(" — " + item.Explanation)
 		}
-		b.WriteString(Truncate(riskLine, GetTerminalWidth()) + "\n")
+		writeLine(&b, Truncate(riskLine, width))
+	}
+
+	if end < len(m.commands) {
+		writeLine(&b, hintStyle.Render(fmt.Sprintf("  ↓ %d more", len(m.commands)-end)))
 	}
 
 	b.WriteString("\n")
@@ -257,11 +328,16 @@ func (m commandListModel) View() string {
 		}
 	}
 
-	b.WriteString(hintStyle.Render(fmt.Sprintf("  %d of %d selected\n\n", selectedCount, len(m.commands))))
+	b.WriteString(hintStyle.Render(fmt.Sprintf("  %d of %d selected", selectedCount, len(m.commands))))
+	b.WriteString("\n\n")
 
-	b.WriteString(helpStyle.Render("  ↑/↓: navigate • space: toggle • a: all • n: none • e: edit • r: regenerate • enter: execute • q: quit"))
+	b.WriteString(m.helpView(m.keys))
 
 	return b.String()
+}
+
+func (m commandListModel) helpView(k help.KeyMap) string {
+	return renderHelp(m.help, k, m.width)
 }
 
 func (m commandListModel) viewRegenerateMode() string {
@@ -269,16 +345,20 @@ func (m commandListModel) viewRegenerateMode() string {
 
 	regenTitleStyle := TitleBoldStyle.Foreground(ColorPrimary)
 
-	b.WriteString("\n" + regenTitleStyle.Render("Refine your request") + "\n")
+	b.WriteByte('\n')
+	writeLine(&b, regenTitleStyle.Render("Refine your request"))
 
-	queryPreview := Truncate(m.originalQuery, 60)
+	queryPreview := Truncate(m.originalQuery, maxQueryPreview)
 
-	b.WriteString(hintStyle.Render(fmt.Sprintf("  Original: \"%s\"\n\n", queryPreview)))
+	b.WriteString(hintStyle.Render(fmt.Sprintf("  Original: %q", queryPreview)))
+	b.WriteString("\n\n")
 
-	b.WriteString(infoStyle.Render("  Add to your request (or press Enter to retry):\n"))
-	b.WriteString("  " + m.textInput.View() + "\n\n")
+	b.WriteString(infoStyle.Render("  Add to your request (or press Enter to retry):"))
+	b.WriteString("\n  ")
+	b.WriteString(m.textInput.View())
+	b.WriteString("\n\n")
 
-	b.WriteString(helpStyle.Render("  enter: regenerate • esc: cancel"))
+	b.WriteString(m.helpView(m.refineKeys))
 
 	return b.String()
 }
@@ -286,10 +366,14 @@ func (m commandListModel) viewRegenerateMode() string {
 func (m commandListModel) viewEditMode() string {
 	var b strings.Builder
 
-	b.WriteString("\n" + TitleBoldStyle.Foreground(ColorPrimary).Render("Edit command") + "\n")
-	b.WriteString(hintStyle.Render(fmt.Sprintf("  %d of %d\n\n", m.cursor+1, len(m.commands))))
-	b.WriteString("  " + m.textInput.View() + "\n\n")
-	b.WriteString(helpStyle.Render("  enter: save • esc: cancel"))
+	b.WriteByte('\n')
+	writeLine(&b, TitleBoldStyle.Foreground(ColorPrimary).Render("Edit command"))
+	b.WriteString(hintStyle.Render(fmt.Sprintf("  %d of %d", m.cursor+1, len(m.commands))))
+	b.WriteString("\n\n")
+	b.WriteString("  ")
+	b.WriteString(m.textInput.View())
+	b.WriteString("\n\n")
+	b.WriteString(m.helpView(m.editKeys))
 
 	return b.String()
 }

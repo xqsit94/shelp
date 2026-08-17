@@ -1,0 +1,45 @@
+===== cursor-on-item-1 =====
+
+Generated Commands (3)
+├─ [●] docker compose down
+│     ● safe — Stops and removes the running containers
+├─ [●] docker compose pull
+│     ● safe — Fetches the newest images for every service
+└─ [●] docker compose up -d
+      ● safe — Recreates the stack in the background
+
+  3 of 3 selected
+
+                   ↑/↓: navigate • space: toggle • a: all • n: none • e: edit • r: regenerate • enter: execute • q: quit
+
+===== cursor-on-item-1~styles =====
+L02: col7 'docker compose down' fg=ffffff
+L04: col7 'docker compose pull' fg=ffffff
+L06: col7 'docker compose up -d' fg=ffffff
+
+===== cursor-on-item-2 =====
+
+Generated Commands (3)
+├─ [●] docker compose down
+│     ● safe — Stops and removes the running containers
+├─ [●] docker compose pull
+│     ● safe — Fetches the newest images for every service
+└─ [●] docker compose up -d
+      ● safe — Recreates the stack in the background
+
+  3 of 3 selected
+
+                   ↑/↓: navigate • space: toggle • a: all • n: none • e: edit • r: regenerate • enter: execute • q: quit
+
+===== cursor-on-item-2~styles =====
+L02: col7 'docker compose down' fg=ffffff
+L04: col7 'docker compose pull' fg=ffffff
+L06: col7 'docker compose up -d' fg=ffffff
+
+===== final =====
+  ▲ Execution cancelled.
+
+===== final~styles =====
+
+
+exit=130 signal=None
