@@ -9,7 +9,7 @@ import (
 	"github.com/xqsit94/shelp/internal/safety"
 )
 
-func key(s string) tea.KeyMsg {
+func typed(s string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
 
@@ -48,7 +48,7 @@ func suggested(commands ...string) []Suggestion {
 func TestCommandListEdit(t *testing.T) {
 	m := newCommandListModel(suggested("ls", "pwd"), "list files")
 
-	m = send(t, m, key("e"), key(" -la"), enter)
+	m = send(t, m, typed("e"), typed(" -la"), enter)
 
 	if got := m.commands[0].Command; got != "ls -la" {
 		t.Errorf("edited command = %q, want %q", got, "ls -la")
@@ -67,7 +67,7 @@ func TestCommandListEdit(t *testing.T) {
 func TestCommandListEditReassessesRisk(t *testing.T) {
 	m := newCommandListModel(suggested("ls", "pwd"), "list files")
 
-	m = send(t, m, down, key("e"), key(" && sudo rm -r /tmp/x"), enter)
+	m = send(t, m, down, typed("e"), typed(" && sudo rm -r /tmp/x"), enter)
 
 	if got := m.commands[1].Risk; got != safety.RiskCaution {
 		t.Errorf("risk = %q, want %q", got, safety.RiskCaution)
@@ -80,7 +80,7 @@ func TestCommandListEditReassessesRisk(t *testing.T) {
 func TestCommandListEditBlockedDeselects(t *testing.T) {
 	m := newCommandListModel(suggested("ls", "pwd"), "list files")
 
-	m = send(t, m, key("e"), key(" && rm -rf /"), enter)
+	m = send(t, m, typed("e"), typed(" && rm -rf /"), enter)
 
 	if got := m.commands[0].Command; got != "ls && rm -rf /" {
 		t.Errorf("edited command = %q", got)
@@ -96,7 +96,7 @@ func TestCommandListEditBlockedDeselects(t *testing.T) {
 func TestCommandListEditEscapeKeepsCommand(t *testing.T) {
 	m := newCommandListModel(suggested("ls", "pwd"), "list files")
 
-	m = send(t, m, key("e"), key(" -la"), esc)
+	m = send(t, m, typed("e"), typed(" -la"), esc)
 
 	if got := m.commands[0].Command; got != "ls" {
 		t.Errorf("command = %q, want it unchanged", got)
@@ -109,7 +109,7 @@ func TestCommandListEditEscapeKeepsCommand(t *testing.T) {
 func TestCommandListRegenerateRefinement(t *testing.T) {
 	m := newCommandListModel(suggested("ls", "pwd"), "list files")
 
-	m = send(t, m, key("r"), key("use find instead"), enter)
+	m = send(t, m, typed("r"), typed("use find instead"), enter)
 
 	if !m.regenerate {
 		t.Fatal("regenerate = false, want true")
@@ -126,7 +126,7 @@ func TestCommandListBlockedStartsDeselected(t *testing.T) {
 		t.Error("blocked command started selected")
 	}
 
-	m = send(t, m, key(" "))
+	m = send(t, m, typed(" "))
 
 	if m.commands[0].Selected {
 		t.Error("blocked command could be toggled on")
@@ -139,7 +139,7 @@ func TestCommandListEditDropsExplanation(t *testing.T) {
 		{Command: "pwd", Explanation: "Prints the working directory"},
 	}, "list files")
 
-	m = send(t, m, key("e"), key(" -la"), enter)
+	m = send(t, m, typed("e"), typed(" -la"), enter)
 
 	if m.commands[0].Explanation != "" {
 		t.Errorf("explanation = %q, want it dropped after an edit", m.commands[0].Explanation)
@@ -210,6 +210,54 @@ func TestCommandListTruncatesLongCommandsWithEllipsis(t *testing.T) {
 	}
 	if !strings.HasSuffix(ansi.Strip(commandRow), "…") {
 		t.Errorf("truncated command row does not end in an ellipsis: %q", ansi.Strip(commandRow))
+	}
+}
+
+// The bindings a user cannot finish the screen without have to survive the
+// narrowest terminal we support.
+func TestCommandListHelpKeepsEssentialKeysAtEveryWidth(t *testing.T) {
+	m := newCommandListModel([]Suggestion{
+		{Command: "echo one"},
+		{Command: "echo two"},
+	}, "echo things")
+
+	for _, width := range []int{40, 60, 80, 100, 160} {
+		sized := m.setSize(width, 24)
+		help := ansi.Strip(sized.helpView(sized.keys))
+
+		for _, want := range []string{"enter", "q"} {
+			if !strings.Contains(help, want) {
+				t.Errorf("width %d: help %q does not mention %q", width, help, want)
+			}
+		}
+		if got := ansi.StringWidth(help); got > width {
+			t.Errorf("width %d: help row width = %d", width, got)
+		}
+	}
+}
+
+// Every view has to stay inside the terminal at any width: the renderer clips
+// silently, so an overflowing line is invisible rather than obviously wrong.
+func TestViewsFitEveryWidth(t *testing.T) {
+	suggestions := []Suggestion{
+		{Command: "docker compose up -d --force-recreate --remove-orphans", Explanation: strings.Repeat("long ", 30)},
+		{Command: "rm -rf /", Explanation: "Deletes everything"},
+	}
+
+	for _, width := range []int{40, 60, 80, 100, 160} {
+		views := map[string]string{
+			"list":    newCommandListModel(suggestions, strings.Repeat("query ", 30)).setSize(width, 24).View(),
+			"confirm": newConfirmModel(suggestions[0]).setSize(width, 24).View(),
+		}
+
+		for name, view := range views {
+			for i, line := range strings.Split(view, "\n") {
+				if got := ansi.StringWidth(line); got > width {
+					t.Errorf("%s view at width %d: line %d is %d wide: %q",
+						name, width, i+1, got, ansi.Strip(line))
+				}
+			}
+		}
 	}
 }
 

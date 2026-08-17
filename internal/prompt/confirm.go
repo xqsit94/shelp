@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/xqsit94/shelp/internal/safety"
@@ -51,19 +53,40 @@ type confirmModel struct {
 	mode        confirmMode
 	textInput   textinput.Model
 	done        bool
+	keys        confirmKeyMap
+	editKeys    inputKeyMap
+	refineKeys  inputKeyMap
+	help        help.Model
+	width       int
 }
 
 func newConfirmModel(suggestion Suggestion) confirmModel {
+	width := GetTerminalWidth()
+
 	ti := textinput.New()
-	ti.Width = GetTerminalWidth() - 6
+	ti.Width = width - 6
+
+	h := newHelpModel(width)
 
 	m := confirmModel{
 		command:     suggestion.Command,
 		explanation: suggestion.Explanation,
 		textInput:   ti,
+		keys:        defaultConfirmKeyMap(),
+		editKeys:    newInputKeyMap("save"),
+		refineKeys:  newInputKeyMap("regenerate"),
+		help:        h,
+		width:       width,
 	}
 	m.assess(suggestion.Command)
 
+	return m
+}
+
+func (m confirmModel) setSize(width, height int) confirmModel {
+	m.width = width
+	m.help.Width = width
+	m.textInput.Width = width - 6
 	return m
 }
 
@@ -84,6 +107,10 @@ func (m confirmModel) Init() tea.Cmd {
 }
 
 func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		return m.setSize(size.Width, size.Height), nil
+	}
+
 	switch m.mode {
 	case confirmModeEdit:
 		return m.updateEditMode(msg)
@@ -93,26 +120,26 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "up", "k":
+		switch {
+		case key.Matches(msg, m.keys.Up):
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case "down", "j":
+		case key.Matches(msg, m.keys.Down):
 			if m.cursor < len(m.choices)-1 {
 				m.cursor++
 			}
-		case "enter", " ":
+		case key.Matches(msg, m.keys.Select):
 			return m.choose(m.choices[m.cursor])
-		case "y", "Y":
+		case key.Matches(msg, m.keys.Execute):
 			if !m.blocked {
 				return m.choose(ConfirmExecute)
 			}
-		case "e", "E":
+		case key.Matches(msg, m.keys.Edit):
 			return m.choose(ConfirmEdit)
-		case "r", "R":
+		case key.Matches(msg, m.keys.Regenerate):
 			return m.choose(ConfirmRegenerate)
-		case "n", "N", "q", "ctrl+c", "esc":
+		case key.Matches(msg, m.keys.Quit):
 			return m.choose(ConfirmCancel)
 		}
 	}
@@ -197,9 +224,9 @@ func (m confirmModel) View() string {
 
 	switch m.mode {
 	case confirmModeEdit:
-		return m.viewInput("Edit command", "enter: save • esc: cancel")
+		return m.viewInput("Edit command", m.editKeys)
 	case confirmModeRefine:
-		return m.viewInput("Refine your request", "enter: regenerate • esc: cancel")
+		return m.viewInput("Refine your request", m.refineKeys)
 	}
 
 	riskEmoji := safety.GetRiskEmoji(m.risk)
@@ -209,12 +236,13 @@ func (m confirmModel) View() string {
 
 	s := "\n"
 	s += cmdTitleStyle.Render("Generated Command") + "\n"
-	s += IndentUnder(TreeStyle.Render(TreeLastBranch)+" ", HighlightCommand(m.command)) + "\n"
+	commandLine := IndentUnder(TreeStyle.Render(TreeLastBranch)+" ", HighlightCommand(m.command))
+	s += TruncateLines(commandLine, m.width) + "\n"
 	riskLine := fmt.Sprintf("   %s %s", riskEmoji, riskStyle.Render(string(m.risk)))
 	if m.explanation != "" {
 		riskLine += ExplanationStyle.Render(" — " + m.explanation)
 	}
-	s += Truncate(riskLine, GetTerminalWidth()) + "\n"
+	s += Truncate(riskLine, m.width) + "\n"
 
 	if m.blocked {
 		s += DangerStyle.Render("   This command is blocked for safety reasons.") + "\n"
@@ -231,21 +259,20 @@ func (m confirmModel) View() string {
 		s += cursor + style.Render(confirmLabels[choice]) + "\n"
 	}
 
-	help := "↑/↓: navigate • enter: select • y: execute • e: edit • r: regenerate • q: cancel"
-	if m.blocked {
-		help = "↑/↓: navigate • enter: select • e: edit • r: regenerate • q: cancel"
-	}
-
-	return s + "\n" + helpStyle.Render(help)
+	return s + "\n" + indentBlock(
+		TruncateLines(m.help.ShortHelpView(m.keys.shortHelpFor(m.blocked)), m.width-helpIndent),
+		helpIndent,
+	)
 }
 
-func (m confirmModel) viewInput(title, help string) string {
+func (m confirmModel) viewInput(title string, keys inputKeyMap) string {
 	var b strings.Builder
 
 	b.WriteString("\n" + TitleBoldStyle.Foreground(ColorPrimary).Render(title) + "\n")
-	b.WriteString(hintStyle.Render(fmt.Sprintf("  %s\n\n", Truncate(Oneline(m.command), 60))))
+	b.WriteString(hintStyle.Render("  " + Truncate(Oneline(m.command), maxQueryPreview)))
+	b.WriteString("\n\n")
 	b.WriteString("  " + m.textInput.View() + "\n\n")
-	b.WriteString(helpStyle.Render("  " + help))
+	b.WriteString(renderHelp(m.help, keys, m.width))
 
 	return b.String()
 }
@@ -275,13 +302,22 @@ type confirmYesNoModel struct {
 	choices  []string
 	selected bool
 	done     bool
+	keys     yesNoKeyMap
+	help     help.Model
+	width    int
 }
 
 func newConfirmYesNoModel(prompt string) confirmYesNoModel {
+	width := GetTerminalWidth()
+	h := newHelpModel(width)
+
 	return confirmYesNoModel{
+		width:   width,
 		prompt:  prompt,
 		choices: []string{"Yes", "No"},
 		cursor:  0,
+		keys:    defaultYesNoKeyMap(),
+		help:    h,
 	}
 }
 
@@ -291,25 +327,28 @@ func (m confirmYesNoModel) Init() tea.Cmd {
 
 func (m confirmYesNoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.help.Width = msg.Width
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "left", "h":
+		switch {
+		case key.Matches(msg, m.keys.Left):
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case "right", "l":
+		case key.Matches(msg, m.keys.Right):
 			if m.cursor < len(m.choices)-1 {
 				m.cursor++
 			}
-		case "enter", " ":
+		case key.Matches(msg, m.keys.Select):
 			m.selected = m.cursor == 0
 			m.done = true
 			return m, tea.Quit
-		case "y", "Y":
+		case key.Matches(msg, m.keys.Yes):
 			m.selected = true
 			m.done = true
 			return m, tea.Quit
-		case "n", "N", "q", "ctrl+c", "esc":
+		case key.Matches(msg, m.keys.No):
 			m.selected = false
 			m.done = true
 			return m, tea.Quit
@@ -338,7 +377,7 @@ func (m confirmYesNoModel) View() string {
 		s += "  "
 	}
 
-	s += "\n\n" + helpStyle.Render("←/→: navigate • enter: select • y/n: quick select")
+	s += "\n\n" + renderHelp(m.help, m.keys, m.width)
 
 	return s
 }

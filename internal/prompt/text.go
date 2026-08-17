@@ -47,3 +47,18 @@ func IndentLines(s string, indent int) string {
 func IndentUnder(prefix, body string) string {
 	return prefix + IndentLines(body, ansi.StringWidth(prefix))
 }
+
+// indentBlock indents every line of s, which is what a multi-line block such as
+// a bordered box needs. Prefixing the string instead moves only its first line.
+func indentBlock(s string, indent int) string {
+	if indent <= 0 {
+		return s
+	}
+
+	pad := strings.Repeat(" ", indent)
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = pad + line
+	}
+	return strings.Join(lines, "\n")
+}

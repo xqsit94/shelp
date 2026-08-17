@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/xqsit94/shelp/internal/safety"
@@ -23,6 +25,9 @@ type CommandItem struct {
 	Selected    bool
 }
 
+// Long queries and commands are shortened before they are used as a heading.
+const maxQueryPreview = 60
+
 type listMode int
 
 const (
@@ -40,6 +45,12 @@ type commandListModel struct {
 	mode          listMode
 	originalQuery string
 	textInput     textinput.Model
+	keys          listKeyMap
+	editKeys      inputKeyMap
+	refineKeys    inputKeyMap
+	help          help.Model
+	width         int
+	height        int
 }
 
 func newCommandListModel(suggestions []Suggestion, originalQuery string) commandListModel {
@@ -53,16 +64,25 @@ func newCommandListModel(suggestions []Suggestion, originalQuery string) command
 		}
 	}
 
+	width := GetTerminalWidth()
+
 	ti := textinput.New()
 	ti.Placeholder = "add refinement here..."
 	ti.CharLimit = 200
-	ti.Width = GetTerminalWidth() - 6
+	ti.Width = width - 6
+
+	h := newHelpModel(width)
 
 	return commandListModel{
 		commands:      items,
 		cursor:        0,
 		originalQuery: originalQuery,
 		textInput:     ti,
+		keys:          defaultListKeyMap(),
+		editKeys:      newInputKeyMap("save"),
+		refineKeys:    newInputKeyMap("regenerate"),
+		help:          h,
+		width:         width,
 	}
 }
 
@@ -70,7 +90,21 @@ func (m commandListModel) Init() tea.Cmd {
 	return nil
 }
 
+// setSize keeps every component that needs to know the terminal width in sync,
+// so a resize reflows instead of leaving stale truncation behind.
+func (m commandListModel) setSize(width, height int) commandListModel {
+	m.width = width
+	m.height = height
+	m.help.Width = width
+	m.textInput.Width = width - 6
+	return m
+}
+
 func (m commandListModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		return m.setSize(size.Width, size.Height), nil
+	}
+
 	switch m.mode {
 	case listModeRegenerate:
 		return m.updateRegenerateMode(msg)
@@ -80,46 +114,48 @@ func (m commandListModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "up", "k":
+		switch {
+		case key.Matches(msg, m.keys.Up):
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case "down", "j":
+		case key.Matches(msg, m.keys.Down):
 			if m.cursor < len(m.commands)-1 {
 				m.cursor++
 			}
-		case " ":
+		case key.Matches(msg, m.keys.Toggle):
 			if !safety.IsBlocked(m.commands[m.cursor].Command) {
 				m.commands[m.cursor].Selected = !m.commands[m.cursor].Selected
 			}
-		case "a":
+		case key.Matches(msg, m.keys.All):
 			for i := range m.commands {
 				if !safety.IsBlocked(m.commands[i].Command) {
 					m.commands[i].Selected = true
 				}
 			}
-		case "n":
+		case key.Matches(msg, m.keys.None):
 			for i := range m.commands {
 				m.commands[i].Selected = false
 			}
-		case "e":
+		case key.Matches(msg, m.keys.Help):
+			m.help.ShowAll = !m.help.ShowAll
+		case key.Matches(msg, m.keys.Edit):
 			m.mode = listModeEdit
 			m.textInput.Placeholder = "edit the command..."
 			m.textInput.CharLimit = 0
 			m.textInput.SetValue(m.commands[m.cursor].Command)
 			m.textInput.CursorEnd()
 			return m, tea.Batch(m.textInput.Focus(), textinput.Blink)
-		case "r":
+		case key.Matches(msg, m.keys.Regenerate):
 			m.mode = listModeRegenerate
 			m.textInput.Placeholder = "add refinement here..."
 			m.textInput.CharLimit = 200
 			m.textInput.SetValue("")
 			return m, tea.Batch(m.textInput.Focus(), textinput.Blink)
-		case "enter":
+		case key.Matches(msg, m.keys.Execute):
 			m.confirmed = true
 			return m, tea.Quit
-		case "q", "ctrl+c", "esc":
+		case key.Matches(msg, m.keys.Quit):
 			m.cancelled = true
 			return m, tea.Quit
 		}
@@ -199,7 +235,7 @@ func (m commandListModel) View() string {
 
 	b.WriteString("\n" + cmdTitleStyle.Render(title) + "\n")
 
-	width := GetTerminalWidth()
+	width := m.width
 
 	for i, item := range m.commands {
 		isLast := i == len(m.commands)-1
@@ -266,11 +302,16 @@ func (m commandListModel) View() string {
 		}
 	}
 
-	b.WriteString(hintStyle.Render(fmt.Sprintf("  %d of %d selected\n\n", selectedCount, len(m.commands))))
+	b.WriteString(hintStyle.Render(fmt.Sprintf("  %d of %d selected", selectedCount, len(m.commands))))
+	b.WriteString("\n\n")
 
-	b.WriteString(helpStyle.Render("  ↑/↓: navigate • space: toggle • a: all • n: none • e: edit • r: regenerate • enter: execute • q: quit"))
+	b.WriteString(m.helpView(m.keys))
 
 	return b.String()
+}
+
+func (m commandListModel) helpView(k help.KeyMap) string {
+	return renderHelp(m.help, k, m.width)
 }
 
 func (m commandListModel) viewRegenerateMode() string {
@@ -280,14 +321,15 @@ func (m commandListModel) viewRegenerateMode() string {
 
 	b.WriteString("\n" + regenTitleStyle.Render("Refine your request") + "\n")
 
-	queryPreview := Truncate(m.originalQuery, 60)
+	queryPreview := Truncate(m.originalQuery, maxQueryPreview)
 
-	b.WriteString(hintStyle.Render(fmt.Sprintf("  Original: \"%s\"\n\n", queryPreview)))
+	b.WriteString(hintStyle.Render(fmt.Sprintf("  Original: %q", queryPreview)))
+	b.WriteString("\n\n")
 
-	b.WriteString(infoStyle.Render("  Add to your request (or press Enter to retry):\n"))
-	b.WriteString("  " + m.textInput.View() + "\n\n")
+	b.WriteString(infoStyle.Render("  Add to your request (or press Enter to retry):"))
+	b.WriteString("\n  " + m.textInput.View() + "\n\n")
 
-	b.WriteString(helpStyle.Render("  enter: regenerate • esc: cancel"))
+	b.WriteString(m.helpView(m.refineKeys))
 
 	return b.String()
 }
@@ -296,9 +338,10 @@ func (m commandListModel) viewEditMode() string {
 	var b strings.Builder
 
 	b.WriteString("\n" + TitleBoldStyle.Foreground(ColorPrimary).Render("Edit command") + "\n")
-	b.WriteString(hintStyle.Render(fmt.Sprintf("  %d of %d\n\n", m.cursor+1, len(m.commands))))
+	b.WriteString(hintStyle.Render(fmt.Sprintf("  %d of %d", m.cursor+1, len(m.commands))))
+	b.WriteString("\n\n")
 	b.WriteString("  " + m.textInput.View() + "\n\n")
-	b.WriteString(helpStyle.Render("  enter: save • esc: cancel"))
+	b.WriteString(m.helpView(m.editKeys))
 
 	return b.String()
 }
