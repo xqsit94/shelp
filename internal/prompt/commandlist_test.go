@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -257,6 +258,65 @@ func TestViewsFitEveryWidth(t *testing.T) {
 						name, width, i+1, got, ansi.Strip(line))
 				}
 			}
+		}
+	}
+}
+
+func TestVisibleRange(t *testing.T) {
+	tests := []struct {
+		name                string
+		count, cursor, rows int
+		wantStart, wantEnd  int
+	}{
+		{"everything fits", 3, 0, 20, 0, 3},
+		{"no size known yet", 12, 5, 0, 0, 12},
+		{"window follows cursor", 12, 5, 10, 3, 8},
+		{"clamped at the top", 12, 0, 10, 0, 5},
+		{"clamped at the bottom", 12, 11, 10, 7, 12},
+		{"one row still shows one", 12, 6, 1, 6, 7},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, end := visibleRange(tt.count, tt.cursor, tt.rows)
+			if start != tt.wantStart || end != tt.wantEnd {
+				t.Errorf("visibleRange(%d, %d, %d) = (%d, %d), want (%d, %d)",
+					tt.count, tt.cursor, tt.rows, start, end, tt.wantStart, tt.wantEnd)
+			}
+			if tt.cursor < start || tt.cursor >= end {
+				t.Errorf("cursor %d is outside the visible window [%d, %d)", tt.cursor, start, end)
+			}
+		})
+	}
+}
+
+// A list taller than the terminal used to push its own title and first items
+// off the screen for good.
+func TestCommandListScrollsInsteadOfOverflowing(t *testing.T) {
+	suggestions := make([]Suggestion, 30)
+	for i := range suggestions {
+		suggestions[i] = Suggestion{Command: fmt.Sprintf("echo step-%02d", i)}
+	}
+
+	const height = 20
+	m := newCommandListModel(suggestions, "do things").setSize(100, height)
+
+	for _, cursor := range []int{0, 15, 29} {
+		m.cursor = cursor
+		view := m.View()
+		lines := strings.Split(view, "\n")
+
+		if len(lines) > height {
+			t.Errorf("cursor %d: view is %d lines, want at most %d", cursor, len(lines), height)
+		}
+		if !strings.Contains(view, "Generated Commands (30)") {
+			t.Errorf("cursor %d: title scrolled out of the view", cursor)
+		}
+
+		want := fmt.Sprintf("echo step-%02d", cursor)
+		if !strings.Contains(ansi.Strip(view), "❯ "+TreeBranch+" [✓] "+want) &&
+			!strings.Contains(ansi.Strip(view), "❯ "+TreeLastBranch+" [✓] "+want) {
+			t.Errorf("cursor %d: focused row %q is not visible:\n%s", cursor, want, ansi.Strip(view))
 		}
 	}
 }

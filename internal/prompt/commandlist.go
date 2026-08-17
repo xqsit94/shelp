@@ -28,6 +28,31 @@ type CommandItem struct {
 // Long queries and commands are shortened before they are used as a heading.
 const maxQueryPreview = 60
 
+// Each command occupies a command row and a risk row, and the rest of the view
+// (title, counter, hints, scroll markers) is chrome that the list has to leave
+// room for.
+const (
+	rowsPerCommand = 2
+	listChromeRows = 8
+	minVisibleRows = 1
+)
+
+// visibleRange picks the window of commands to draw so that the cursor is
+// always on screen. Scroll position is derived from the cursor rather than
+// stored, so it cannot drift out of sync with it.
+func visibleRange(count, cursor, availableRows int) (start, end int) {
+	if availableRows <= 0 || count*rowsPerCommand <= availableRows {
+		return 0, count
+	}
+
+	visible := max(availableRows/rowsPerCommand, minVisibleRows)
+
+	start = cursor - visible/2
+	start = min(max(start, 0), count-visible)
+
+	return start, start + visible
+}
+
 type listMode int
 
 const (
@@ -237,7 +262,13 @@ func (m commandListModel) View() string {
 
 	width := m.width
 
-	for i, item := range m.commands {
+	start, end := visibleRange(len(m.commands), m.cursor, m.height-listChromeRows)
+	if start > 0 {
+		b.WriteString(hintStyle.Render(fmt.Sprintf("  ↑ %d more", start)) + "\n")
+	}
+
+	for i, item := range m.commands[start:end] {
+		i += start
 		isLast := i == len(m.commands)-1
 		isActive := m.cursor == i
 
@@ -291,6 +322,10 @@ func (m commandListModel) View() string {
 			riskLine += ExplanationStyle.Render(" — " + item.Explanation)
 		}
 		b.WriteString(Truncate(riskLine, width) + "\n")
+	}
+
+	if end < len(m.commands) {
+		b.WriteString(hintStyle.Render(fmt.Sprintf("  ↓ %d more", len(m.commands)-end)) + "\n")
 	}
 
 	b.WriteString("\n")
