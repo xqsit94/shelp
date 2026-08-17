@@ -83,8 +83,8 @@ check_binary_exists() {
     local version="$1"
     local os="$2"
     local arch="$3"
-    local binary_name="${BINARY_NAME}-${os}-${arch}"
-    local download_url="https://github.com/${REPO}/releases/download/${version}/${binary_name}"
+    local archive_name="${BINARY_NAME}-${os}-${arch}.tar.gz"
+    local download_url="https://github.com/${REPO}/releases/download/${version}/${archive_name}"
 
     if command -v curl &> /dev/null; then
         local status=$(curl -sL -o /dev/null -w "%{http_code}" "$download_url")
@@ -94,25 +94,68 @@ check_binary_exists() {
     fi
 }
 
+verify_checksum() {
+    local archive_path="$1"
+    local checksum_path="$2"
+    local expected actual
+
+    expected=$(awk '{print $1}' "$checksum_path" 2>/dev/null)
+    if [ -z "$expected" ]; then
+        log_warning "Checksum file is missing or empty, skipping verification"
+        return 0
+    fi
+
+    if command -v sha256sum &> /dev/null; then
+        actual=$(sha256sum "$archive_path" | awk '{print $1}')
+    elif command -v shasum &> /dev/null; then
+        actual=$(shasum -a 256 "$archive_path" | awk '{print $1}')
+    else
+        log_warning "Neither sha256sum nor shasum found, skipping checksum verification"
+        return 0
+    fi
+
+    if [ "$expected" != "$actual" ]; then
+        log_error "Checksum verification failed"
+        log_error "Expected: ${expected}"
+        log_error "Actual:   ${actual}"
+        exit 1
+    fi
+
+    log_success "Checksum verified"
+}
+
 install_binary() {
     local version="$1"
     local os="$2"
     local arch="$3"
-    local binary_name="${BINARY_NAME}-${os}-${arch}"
-    local download_url="https://github.com/${REPO}/releases/download/${version}/${binary_name}"
-    local temp_file=$(mktemp)
+    local archive_name="${BINARY_NAME}-${os}-${arch}.tar.gz"
+    local base_url="https://github.com/${REPO}/releases/download/${version}"
+    local temp_dir=$(mktemp -d)
+
+    trap "rm -rf '${temp_dir}'" EXIT
 
     log_info "Downloading ${BINARY_NAME} ${version} for ${os}/${arch}..."
 
     if command -v curl &> /dev/null; then
-        curl -sL -o "$temp_file" "$download_url"
+        curl -sL -o "${temp_dir}/${archive_name}" "${base_url}/${archive_name}"
+        curl -sL -o "${temp_dir}/${archive_name}.sha256" "${base_url}/${archive_name}.sha256"
     else
-        wget -q -O "$temp_file" "$download_url"
+        wget -q -O "${temp_dir}/${archive_name}" "${base_url}/${archive_name}"
+        wget -q -O "${temp_dir}/${archive_name}.sha256" "${base_url}/${archive_name}.sha256"
+    fi
+
+    verify_checksum "${temp_dir}/${archive_name}" "${temp_dir}/${archive_name}.sha256"
+
+    tar -xzf "${temp_dir}/${archive_name}" -C "$temp_dir"
+
+    if [ ! -f "${temp_dir}/${BINARY_NAME}" ]; then
+        log_error "Archive did not contain a ${BINARY_NAME} binary"
+        exit 1
     fi
 
     mkdir -p "$INSTALL_DIR"
 
-    mv "$temp_file" "${INSTALL_DIR}/${BINARY_NAME}"
+    mv "${temp_dir}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
     chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 
     log_success "Installed ${BINARY_NAME} to ${INSTALL_DIR}/${BINARY_NAME}"

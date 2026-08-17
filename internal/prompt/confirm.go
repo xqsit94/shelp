@@ -2,7 +2,9 @@ package prompt
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/xqsit94/shelp/internal/safety"
 )
@@ -11,27 +13,69 @@ type ConfirmChoice int
 
 const (
 	ConfirmExecute ConfirmChoice = iota
+	ConfirmEdit
 	ConfirmRegenerate
-	ConfirmSkip
 	ConfirmCancel
 )
 
-type confirmModel struct {
-	command  string
-	risk     safety.RiskLevel
-	choices  []string
-	cursor   int
-	selected ConfirmChoice
-	done     bool
+var confirmLabels = map[ConfirmChoice]string{
+	ConfirmExecute:    "Execute",
+	ConfirmEdit:       "Edit",
+	ConfirmRegenerate: "Regenerate",
+	ConfirmCancel:     "Cancel",
 }
 
-func newConfirmModel(command string) confirmModel {
-	risk := safety.AssessRisk(command)
-	return confirmModel{
-		command: command,
-		risk:    risk,
-		choices: []string{"Execute", "Regenerate", "Cancel"},
-		cursor:  0,
+type confirmMode int
+
+const (
+	confirmModeMenu confirmMode = iota
+	confirmModeEdit
+	confirmModeRefine
+)
+
+type ConfirmResult struct {
+	Choice     ConfirmChoice
+	Command    string
+	Refinement string
+}
+
+type confirmModel struct {
+	command     string
+	explanation string
+	risk        safety.RiskLevel
+	blocked     bool
+	choices     []ConfirmChoice
+	cursor      int
+	selected    ConfirmChoice
+	refinement  string
+	mode        confirmMode
+	textInput   textinput.Model
+	done        bool
+}
+
+func newConfirmModel(suggestion Suggestion) confirmModel {
+	ti := textinput.New()
+	ti.Width = GetTerminalWidth() - 6
+
+	m := confirmModel{
+		command:     suggestion.Command,
+		explanation: suggestion.Explanation,
+		textInput:   ti,
+	}
+	m.assess(suggestion.Command)
+
+	return m
+}
+
+func (m *confirmModel) assess(command string) {
+	m.command = command
+	m.risk = safety.AssessRisk(command)
+	m.blocked = safety.IsBlocked(command)
+	m.cursor = 0
+
+	m.choices = []ConfirmChoice{ConfirmExecute, ConfirmEdit, ConfirmRegenerate, ConfirmCancel}
+	if m.blocked {
+		m.choices = m.choices[1:]
 	}
 }
 
@@ -40,6 +84,13 @@ func (m confirmModel) Init() tea.Cmd {
 }
 
 func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch m.mode {
+	case confirmModeEdit:
+		return m.updateEditMode(msg)
+	case confirmModeRefine:
+		return m.updateRefineMode(msg)
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -52,24 +103,91 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		case "enter", " ":
-			m.selected = ConfirmChoice(m.cursor)
-			m.done = true
-			return m, tea.Quit
+			return m.choose(m.choices[m.cursor])
 		case "y", "Y":
-			m.selected = ConfirmExecute
-			m.done = true
-			return m, tea.Quit
+			if !m.blocked {
+				return m.choose(ConfirmExecute)
+			}
+		case "e", "E":
+			return m.choose(ConfirmEdit)
 		case "r", "R":
+			return m.choose(ConfirmRegenerate)
+		case "n", "N", "q", "ctrl+c", "esc":
+			return m.choose(ConfirmCancel)
+		}
+	}
+
+	return m, nil
+}
+
+func (m confirmModel) choose(choice ConfirmChoice) (tea.Model, tea.Cmd) {
+	switch choice {
+	case ConfirmEdit:
+		m.mode = confirmModeEdit
+		m.textInput.Placeholder = "edit the command..."
+		m.textInput.CharLimit = 0
+		m.textInput.SetValue(m.command)
+		m.textInput.CursorEnd()
+		return m, tea.Batch(m.textInput.Focus(), textinput.Blink)
+	case ConfirmRegenerate:
+		m.mode = confirmModeRefine
+		m.textInput.Placeholder = "add refinement here..."
+		m.textInput.CharLimit = 200
+		m.textInput.SetValue("")
+		return m, tea.Batch(m.textInput.Focus(), textinput.Blink)
+	default:
+		m.selected = choice
+		m.done = true
+		return m, tea.Quit
+	}
+}
+
+func (m confirmModel) updateEditMode(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "enter":
+			if edited := strings.TrimSpace(m.textInput.Value()); edited != "" {
+				m.explanation = ""
+				m.assess(edited)
+			}
+			return m.backToMenu(), nil
+		case "esc":
+			return m.backToMenu(), nil
+		case "ctrl+c":
+			return m.choose(ConfirmCancel)
+		}
+	}
+
+	var cmd tea.Cmd
+	m.textInput, cmd = m.textInput.Update(msg)
+	return m, cmd
+}
+
+func (m confirmModel) updateRefineMode(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "enter":
+			m.refinement = strings.TrimSpace(m.textInput.Value())
 			m.selected = ConfirmRegenerate
 			m.done = true
 			return m, tea.Quit
-		case "n", "N", "q", "ctrl+c", "esc":
-			m.selected = ConfirmCancel
-			m.done = true
-			return m, tea.Quit
+		case "esc":
+			return m.backToMenu(), nil
+		case "ctrl+c":
+			return m.choose(ConfirmCancel)
 		}
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	m.textInput, cmd = m.textInput.Update(msg)
+	return m, cmd
+}
+
+func (m confirmModel) backToMenu() confirmModel {
+	m.mode = confirmModeMenu
+	m.textInput.SetValue("")
+	m.textInput.Blur()
+	return m
 }
 
 func (m confirmModel) View() string {
@@ -77,13 +195,31 @@ func (m confirmModel) View() string {
 		return ""
 	}
 
+	switch m.mode {
+	case confirmModeEdit:
+		return m.viewInput("Edit command", "enter: save • esc: cancel")
+	case confirmModeRefine:
+		return m.viewInput("Refine your request", "enter: regenerate • esc: cancel")
+	}
+
 	riskEmoji := safety.GetRiskEmoji(m.risk)
 	riskStyle := getRiskStyle(string(m.risk))
 
+	cmdTitleStyle := TitleBoldStyle.Foreground(ColorInfo)
+
 	s := "\n"
-	s += RenderCommandBox("Generated Command", m.command)
+	s += cmdTitleStyle.Render("Generated Command") + "\n"
+	s += IndentUnder(TreeStyle.Render(TreeLastBranch)+" ", HighlightCommand(m.command)) + "\n"
+	riskLine := fmt.Sprintf("   %s %s", riskEmoji, riskStyle.Render(string(m.risk)))
+	if m.explanation != "" {
+		riskLine += ExplanationStyle.Render(" — " + m.explanation)
+	}
+	s += Truncate(riskLine, GetTerminalWidth()) + "\n"
+
+	if m.blocked {
+		s += DangerStyle.Render("   This command is blocked for safety reasons.") + "\n"
+	}
 	s += "\n"
-	s += fmt.Sprintf("Risk: %s %s\n\n", riskEmoji, riskStyle.Render(string(m.risk)))
 
 	for i, choice := range m.choices {
 		cursor := "  "
@@ -92,28 +228,45 @@ func (m confirmModel) View() string {
 			cursor = cursorStyle.Render("> ")
 			style = selectedStyle
 		}
-		s += cursor + style.Render(choice) + "\n"
+		s += cursor + style.Render(confirmLabels[choice]) + "\n"
 	}
 
-	s += "\n" + helpStyle.Render("↑/↓: navigate • enter: select • y: execute • r: regenerate • q: cancel")
+	help := "↑/↓: navigate • enter: select • y: execute • e: edit • r: regenerate • q: cancel"
+	if m.blocked {
+		help = "↑/↓: navigate • enter: select • e: edit • r: regenerate • q: cancel"
+	}
 
-	return s
+	return s + "\n" + helpStyle.Render(help)
 }
 
-func ConfirmExecutionInteractive(cmd string) ConfirmChoice {
-	if safety.IsBlocked(cmd) {
-		fmt.Println(dangerStyle.Render("This command has been blocked for safety reasons."))
-		return ConfirmCancel
+func (m confirmModel) viewInput(title, help string) string {
+	var b strings.Builder
+
+	b.WriteString("\n" + TitleBoldStyle.Foreground(ColorPrimary).Render(title) + "\n")
+	b.WriteString(hintStyle.Render(fmt.Sprintf("  %s\n\n", Truncate(Oneline(m.command), 60))))
+	b.WriteString("  " + m.textInput.View() + "\n\n")
+	b.WriteString(helpStyle.Render("  " + help))
+
+	return b.String()
+}
+
+func ConfirmExecutionInteractive(suggestion Suggestion) ConfirmResult {
+	if !IsInteractive() {
+		return ConfirmResult{Choice: ConfirmCancel, Command: suggestion.Command}
 	}
 
-	m := newConfirmModel(cmd)
-	p := tea.NewProgram(m)
-	finalModel, err := p.Run()
+	finalModel, err := tea.NewProgram(newConfirmModel(suggestion)).Run()
 	if err != nil {
-		return ConfirmCancel
+		return ConfirmResult{Choice: ConfirmCancel, Command: suggestion.Command}
 	}
 
-	return finalModel.(confirmModel).selected
+	result := finalModel.(confirmModel)
+
+	return ConfirmResult{
+		Choice:     result.selected,
+		Command:    result.command,
+		Refinement: result.refinement,
+	}
 }
 
 type confirmYesNoModel struct {
@@ -191,6 +344,10 @@ func (m confirmYesNoModel) View() string {
 }
 
 func ConfirmYesNoInteractive(prompt string) bool {
+	if !IsInteractive() {
+		return false
+	}
+
 	m := newConfirmYesNoModel(prompt)
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()

@@ -1,12 +1,16 @@
 package prompt
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+var ErrCancelled = errors.New("cancelled")
 
 var ShelpSpinner = spinner.Spinner{
 	Frames: []string{
@@ -24,70 +28,98 @@ var ShelpSpinner = spinner.Spinner{
 	FPS: time.Second / 12,
 }
 
-type spinnerModel struct {
+type spinnerResultMsg[T any] struct {
+	value T
+	err   error
+}
+
+type spinnerModel[T any] struct {
 	spinner  spinner.Model
 	message  string
+	fn       func(context.Context) (T, error)
+	ctx      context.Context
+	cancel   context.CancelFunc
+	value    T
+	err      error
 	quitting bool
 }
 
-func newSpinnerModel(message string) spinnerModel {
-	s := spinner.New()
-	s.Spinner = ShelpSpinner
-	s.Style = spinnerStyle
-	return spinnerModel{
-		spinner: s,
-		message: message,
-	}
+func (m spinnerModel[T]) Init() tea.Cmd {
+	return tea.Batch(m.spinner.Tick, m.run)
 }
 
-func (m spinnerModel) Init() tea.Cmd {
-	return m.spinner.Tick
+func (m spinnerModel[T]) run() tea.Msg {
+	value, err := m.fn(m.ctx)
+	return spinnerResultMsg[T]{value: value, err: err}
 }
 
-func (m spinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m spinnerModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "q", "ctrl+c":
-			m.quitting = true
-			return m, tea.Quit
+		case "ctrl+c", "esc":
+			return m.cancelled()
 		}
+	case tea.InterruptMsg:
+		return m.cancelled()
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
-	case spinnerDoneMsg:
+	case spinnerResultMsg[T]:
+		m.value = msg.value
+		m.err = msg.err
 		m.quitting = true
 		return m, tea.Quit
 	}
 	return m, nil
 }
 
-func (m spinnerModel) View() string {
+func (m spinnerModel[T]) cancelled() (tea.Model, tea.Cmd) {
+	m.cancel()
+	m.err = ErrCancelled
+	m.quitting = true
+	return m, tea.Quit
+}
+
+func (m spinnerModel[T]) View() string {
 	if m.quitting {
 		return ""
 	}
 	return fmt.Sprintf("%s %s", m.spinner.View(), m.message)
 }
 
-type spinnerDoneMsg struct{}
+// RunWithSpinner runs fn while a spinner is on screen, cancelling fn's context
+// when the user interrupts. Without a terminal there is nothing to animate and
+// nothing to read keys from, so fn simply runs inline.
+func RunWithSpinner[T any](ctx context.Context, message string, fn func(context.Context) (T, error)) (T, error) {
+	if !IsInteractive() {
+		return fn(ctx)
+	}
 
-type SpinnerProgram struct {
-	program *tea.Program
-}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-func NewSpinner(message string) *SpinnerProgram {
-	m := newSpinnerModel(message)
-	p := tea.NewProgram(m)
-	return &SpinnerProgram{program: p}
-}
+	s := spinner.New()
+	s.Spinner = ShelpSpinner
+	s.Style = spinnerStyle
 
-func (s *SpinnerProgram) Start() {
-	go s.program.Run()
-}
+	finalModel, err := tea.NewProgram(spinnerModel[T]{
+		spinner: s,
+		message: message,
+		fn:      fn,
+		ctx:     ctx,
+		cancel:  cancel,
+	}).Run()
+	if err != nil {
+		var zero T
+		if errors.Is(err, tea.ErrProgramKilled) || errors.Is(err, tea.ErrInterrupted) {
+			return zero, ErrCancelled
+		}
+		return zero, err
+	}
 
-func (s *SpinnerProgram) Stop() {
-	s.program.Send(spinnerDoneMsg{})
-	s.program.Wait()
-	fmt.Print("\r\033[K")
+	result := finalModel.(spinnerModel[T])
+
+	return result.value, result.err
 }

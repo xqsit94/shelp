@@ -1,89 +1,127 @@
 package executor
 
 import (
-	"bytes"
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/xqsit94/shelp/internal/safety"
 )
 
-type Result struct {
-	Command  string
-	Output   string
-	Error    string
-	ExitCode int
+const waitDelay = 3 * time.Second
+
+type Options struct {
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
 }
 
-func Execute(command, shell string) (*Result, error) {
+type Result struct {
+	Command     string
+	ExitCode    int
+	Interrupted bool
+}
+
+func Execute(ctx context.Context, command, shell string, opts Options) (*Result, error) {
 	if safety.IsBlocked(command) {
 		return nil, fmt.Errorf("command blocked for safety reasons")
 	}
 
-	var cmd *exec.Cmd
-	switch shell {
-	case "zsh":
-		cmd = exec.Command("zsh", "-c", command)
-	case "fish":
-		cmd = exec.Command("fish", "-c", command)
-	case "sh":
-		cmd = exec.Command("sh", "-c", command)
-	default:
-		cmd = exec.Command("bash", "-c", command)
-	}
+	name, args := shellArgs(resolveShell(shell), command)
+
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Cancel = func() error { return cancelProcess(cmd) }
+	cmd.WaitDelay = waitDelay
 
 	cmd.Dir, _ = os.Getwd()
 	cmd.Env = os.Environ()
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdin = os.Stdin
+	if opts.Stdin != nil {
+		cmd.Stdin = opts.Stdin
+	}
+
+	cmd.Stdout = os.Stdout
+	if opts.Stdout != nil {
+		cmd.Stdout = opts.Stdout
+	}
+
+	cmd.Stderr = os.Stderr
+	if opts.Stderr != nil {
+		cmd.Stderr = opts.Stderr
+	}
 
 	err := cmd.Run()
 
 	result := &Result{
-		Command:  command,
-		Output:   strings.TrimSpace(stdout.String()),
-		Error:    strings.TrimSpace(stderr.String()),
-		ExitCode: 0,
+		Command:     command,
+		Interrupted: ctx.Err() != nil,
 	}
 
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			result.ExitCode = exitErr.ExitCode()
-		} else {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
 			return nil, fmt.Errorf("failed to execute command: %v", err)
 		}
+
+		result.ExitCode = exitCodeOf(exitErr)
 	}
 
 	return result, nil
 }
 
-func DetectShell() string {
-	shell := os.Getenv("SHELL")
+// $SHELL may name a shell that is not installed here (fish or zsh on a bare
+// server), so fall back to the one shell that is always present.
+func resolveShell(shell string) string {
 	if shell == "" {
-		return "bash"
+		shell = defaultShell
 	}
 
-	if strings.HasSuffix(shell, "/zsh") {
-		return "zsh"
+	if _, err := exec.LookPath(shell); err != nil {
+		return fallbackShell
 	}
-	if strings.HasSuffix(shell, "/fish") {
-		return "fish"
+
+	return shell
+}
+
+func shellArgs(shell, command string) (string, []string) {
+	switch shell {
+	case "pwsh", "powershell":
+		return shell, []string{"-NoProfile", "-Command", command}
+	case "cmd":
+		return shell, []string{"/C", command}
+	default:
+		return shell, []string{"-c", command}
 	}
-	if strings.HasSuffix(shell, "/bash") {
-		return "bash"
+}
+
+func DetectShell() string {
+	return detectShell(runtime.GOOS, os.Getenv("SHELL"), exec.LookPath)
+}
+
+// Windows has no $SHELL, so the best available PowerShell is preferred and
+// cmd is the last resort.
+func detectShell(goos, shellEnv string, lookPath func(string) (string, error)) string {
+	if goos == "windows" {
+		for _, shell := range []string{"pwsh", "powershell"} {
+			if _, err := lookPath(shell); err == nil {
+				return shell
+			}
+		}
+		return "cmd"
 	}
-	if strings.HasSuffix(shell, "/sh") {
-		return "sh"
+
+	for _, shell := range []string{"zsh", "fish", "bash", "sh"} {
+		if strings.HasSuffix(shellEnv, "/"+shell) {
+			return shell
+		}
 	}
 
 	return "bash"
-}
-
-func IsShellAvailable(shell string) bool {
-	_, err := exec.LookPath(shell)
-	return err == nil
 }

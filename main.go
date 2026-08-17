@@ -1,15 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/xqsit94/shelp/cmd"
 )
 
 func main() {
-	if err := cmd.RootCmd().Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
+	os.Exit(cmd.Run())
 }

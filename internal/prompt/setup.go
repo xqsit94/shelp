@@ -20,7 +20,6 @@ type setupModel struct {
 	focusIndex int
 	inputs     []textinput.Model
 	labels     []string
-	placeholders []string
 	step       int
 	totalSteps int
 	cancelled  bool
@@ -54,12 +53,11 @@ func newSetupModel() setupModel {
 	inputs[0].Focus()
 
 	return setupModel{
-		inputs:       inputs,
-		labels:       labels,
-		placeholders: placeholders,
-		focusIndex:   0,
-		step:         1,
-		totalSteps:   3,
+		inputs:     inputs,
+		labels:     labels,
+		focusIndex: 0,
+		step:       1,
+		totalSteps: 3,
 	}
 }
 
@@ -141,8 +139,8 @@ func (m setupModel) View() string {
 
 	var b strings.Builder
 
-	welcomeTitle := titleBoldStyle.
-		Foreground(colorPrimary).
+	welcomeTitle := TitleBoldStyle.
+		Foreground(ColorPrimary).
 		Render("Welcome to shelp!")
 
 	welcomeSubtitle := hintStyle.
@@ -201,6 +199,10 @@ func (m setupModel) renderProgressBar() string {
 }
 
 func RunSetupWizard() SetupResult {
+	if !IsInteractive() {
+		return SetupResult{Cancelled: true}
+	}
+
 	m := newSetupModel()
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()

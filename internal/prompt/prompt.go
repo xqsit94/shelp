@@ -2,47 +2,82 @@ package prompt
 
 import (
 	"fmt"
-	"strings"
+	"io"
+	"os"
+
+	"github.com/xqsit94/shelp/internal/safety"
+	"golang.org/x/term"
 )
 
 const (
-	IconSuccess = "●"
-	IconError   = "●"
-	IconWarning = "●"
-	IconInfo    = "●"
-	IconArrow   = "→"
+	IconSuccess = "✓"
+	IconError   = "✕"
+	IconWarning = "▲"
 )
 
-func DisplayOutput(output string, isError bool) {
-	if output == "" {
-		return
-	}
+func IsInteractive() bool {
+	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+}
 
-	lines := strings.Split(output, "\n")
-	var content strings.Builder
-	for _, line := range lines {
-		content.WriteString(line + "\n")
-	}
+// IsTerminalWriter reports whether w is a terminal, so that plain text can be
+// written when the output is piped or captured.
+func IsTerminalWriter(w io.Writer) bool {
+	file, ok := w.(*os.File)
+	return ok && term.IsTerminal(int(file.Fd()))
+}
 
-	if isError {
-		fmt.Println(RenderErrorBox(strings.TrimSpace(content.String())))
-	} else {
-		fmt.Println(RenderOutputBox(strings.TrimSpace(content.String())))
+// DisplayCommandPlan prints one tree row per command with its risk level and
+// explanation, so unattended runs still show what is about to happen.
+func DisplayCommandPlan(suggestions []Suggestion) {
+	fmt.Println()
+	fmt.Println(TitleBoldStyle.Foreground(ColorInfo).Render(fmt.Sprintf("Generated Commands (%d)", len(suggestions))))
+
+	for i, suggestion := range suggestions {
+		branch := TreeBranch
+		if i == len(suggestions)-1 {
+			branch = TreeLastBranch
+		}
+
+		risk := safety.AssessRisk(suggestion.Command)
+		label := string(risk)
+		if safety.IsBlocked(suggestion.Command) {
+			label += " (blocked)"
+		}
+
+		row := fmt.Sprintf("%s %s  %s %s",
+			TreeStyle.Render(branch),
+			HighlightCommand(Oneline(suggestion.Command)),
+			safety.GetRiskEmoji(risk),
+			getRiskStyle(string(risk)).Render(label),
+		)
+		if suggestion.Explanation != "" {
+			row += ExplanationStyle.Render(" — " + suggestion.Explanation)
+		}
+
+		fmt.Println(Truncate(row, GetTerminalWidth()))
 	}
+}
+
+func DisplayRunning(index, total int, command string) {
+	prefix := fmt.Sprintf("%s %s ",
+		TreeStyle.Render(TreeBranch),
+		hintStyle.Render(fmt.Sprintf("[%d/%d]", index, total)),
+	)
+
+	fmt.Println(IndentUnder(prefix, HighlightCommand(command)))
+	fmt.Println()
 }
 
 func DisplaySuccess(message string) {
-	fmt.Println(successStyle.Render("  " + IconSuccess + " " + message))
+	fmt.Println(SuccessStyle.Render("  " + IconSuccess + " " + message))
 }
 
+// Diagnostics go to stderr so that piped or captured stdout only ever carries
+// commands and command output.
 func DisplayError(message string) {
-	fmt.Println(dangerStyle.Render("  " + IconError + " " + message))
+	fmt.Fprintln(os.Stderr, DangerStyle.Render("  "+IconError+" "+message))
 }
 
 func DisplayWarning(message string) {
-	fmt.Println(warningStyle.Render("  " + IconWarning + " " + message))
-}
-
-func DisplayInfo(message string) {
-	fmt.Println(infoStyle.Render("  " + IconInfo + " " + message))
+	fmt.Fprintln(os.Stderr, warningStyle.Render("  "+IconWarning+" "+message))
 }
