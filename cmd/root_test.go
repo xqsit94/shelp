@@ -9,9 +9,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/xqsit94/shelp/internal/ai"
 )
 
 // fakeProvider answers with the legacy shape: a plain JSON array of command
@@ -349,5 +352,20 @@ func TestRootUnconfiguredWithoutTerminal(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "SHELP_URL") {
 		t.Errorf("error = %q, want it to mention the environment variables", err)
+	}
+}
+
+func TestRefinementsOfSkipsBareRetries(t *testing.T) {
+	history := []ai.Turn{
+		{Feedback: "use podman instead"},
+		{Feedback: ""},
+		{Feedback: "without pulling images"},
+	}
+
+	got := refinementsOf(history)
+	want := []string{"use podman instead", "without pulling images"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("refinementsOf() = %q, want %q", got, want)
 	}
 }

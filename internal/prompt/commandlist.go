@@ -62,6 +62,7 @@ type commandListModel struct {
 	regenerate    bool
 	mode          listMode
 	originalQuery string
+	refinements   []string
 	textInput     textinput.Model
 	keys          listKeyMap
 	editKeys      inputKeyMap
@@ -102,6 +103,11 @@ func newCommandListModel(suggestions []Suggestion, originalQuery string) command
 		help:          h,
 		width:         width,
 	}
+}
+
+func (m commandListModel) withRefinements(refinements []string) commandListModel {
+	m.refinements = refinements
+	return m
 }
 
 func (m commandListModel) Init() tea.Cmd {
@@ -343,24 +349,27 @@ func (m commandListModel) helpView(k help.KeyMap) string {
 func (m commandListModel) viewRegenerateMode() string {
 	var b strings.Builder
 
-	regenTitleStyle := TitleBoldStyle.Foreground(ColorPrimary)
+	b.WriteByte('\n')
+	writeLine(&b, TitleBoldStyle.Foreground(ColorPrimary).Render("Refine your request"))
+	b.WriteString(m.refineContext().render(m.width, m.height))
 
 	b.WriteByte('\n')
-	writeLine(&b, regenTitleStyle.Render("Refine your request"))
+	writeLine(&b, TruncateLines(infoStyle.Render("  Add to your request (or press Enter to retry):"), m.width))
+	writeLine(&b, "  "+m.textInput.View())
 
-	queryPreview := Truncate(m.originalQuery, maxQueryPreview)
-
-	b.WriteString(hintStyle.Render(fmt.Sprintf("  Original: %q", queryPreview)))
-	b.WriteString("\n\n")
-
-	b.WriteString(infoStyle.Render("  Add to your request (or press Enter to retry):"))
-	b.WriteString("\n  ")
-	b.WriteString(m.textInput.View())
-	b.WriteString("\n\n")
-
+	b.WriteByte('\n')
 	b.WriteString(m.helpView(m.refineKeys))
 
 	return b.String()
+}
+
+func (m commandListModel) refineContext() refineContext {
+	commands := make([]string, len(m.commands))
+	for i, item := range m.commands {
+		commands[i] = item.Command
+	}
+
+	return refineContext{Query: m.originalQuery, Refinements: m.refinements, Commands: commands}
 }
 
 func (m commandListModel) viewEditMode() string {
@@ -385,13 +394,13 @@ type CommandListResult struct {
 	Refinement       string
 }
 
-func SelectCommands(suggestions []Suggestion, originalQuery string) CommandListResult {
+func SelectCommands(suggestions []Suggestion, originalQuery string, refinements []string) CommandListResult {
 	if len(suggestions) == 0 || !IsInteractive() {
 		return CommandListResult{Cancelled: true}
 	}
 
 	if len(suggestions) == 1 {
-		result := ConfirmExecutionInteractive(suggestions[0])
+		result := ConfirmExecutionInteractive(suggestions[0], originalQuery, refinements)
 		switch result.Choice {
 		case ConfirmExecute:
 			return CommandListResult{SelectedCommands: []string{result.Command}}
@@ -402,7 +411,7 @@ func SelectCommands(suggestions []Suggestion, originalQuery string) CommandListR
 		}
 	}
 
-	m := newCommandListModel(suggestions, originalQuery)
+	m := newCommandListModel(suggestions, originalQuery).withRefinements(refinements)
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {

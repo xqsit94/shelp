@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The refine screen now shows the round it is refining: the original query, the
+  refinements already added to it, and the commands that came back. The list is
+  trimmed from the context first when the terminal is short, so the input and
+  its key hints stay on screen.
 - Long command lists now scroll instead of overflowing the terminal: only the
   window that fits is drawn, with `↑ N more` / `↓ N more` markers, and the
   focused command is always kept on screen.

@@ -42,22 +42,25 @@ type ConfirmResult struct {
 }
 
 type confirmModel struct {
-	command     string
-	explanation string
-	risk        safety.RiskLevel
-	blocked     bool
-	choices     []ConfirmChoice
-	cursor      int
-	selected    ConfirmChoice
-	refinement  string
-	mode        confirmMode
-	textInput   textinput.Model
-	done        bool
-	keys        confirmKeyMap
-	editKeys    inputKeyMap
-	refineKeys  inputKeyMap
-	help        help.Model
-	width       int
+	command       string
+	explanation   string
+	originalQuery string
+	refinements   []string
+	risk          safety.RiskLevel
+	blocked       bool
+	choices       []ConfirmChoice
+	cursor        int
+	selected      ConfirmChoice
+	refinement    string
+	mode          confirmMode
+	textInput     textinput.Model
+	done          bool
+	keys          confirmKeyMap
+	editKeys      inputKeyMap
+	refineKeys    inputKeyMap
+	help          help.Model
+	width         int
+	height        int
 }
 
 func newConfirmModel(suggestion Suggestion) confirmModel {
@@ -83,8 +86,15 @@ func newConfirmModel(suggestion Suggestion) confirmModel {
 	return m
 }
 
+func (m confirmModel) withRefineContext(originalQuery string, refinements []string) confirmModel {
+	m.originalQuery = originalQuery
+	m.refinements = refinements
+	return m
+}
+
 func (m confirmModel) setSize(width, height int) confirmModel {
 	m.width = width
+	m.height = height
 	m.help.Width = width
 	m.textInput.Width = width - 6
 	return m
@@ -224,9 +234,9 @@ func (m confirmModel) View() string {
 
 	switch m.mode {
 	case confirmModeEdit:
-		return m.viewInput("Edit command", m.editKeys)
+		return m.viewEdit()
 	case confirmModeRefine:
-		return m.viewInput("Refine your request", m.refineKeys)
+		return m.viewRefine()
 	}
 
 	riskEmoji := safety.GetRiskEmoji(m.risk)
@@ -265,27 +275,51 @@ func (m confirmModel) View() string {
 	)
 }
 
-func (m confirmModel) viewInput(title string, keys inputKeyMap) string {
+func (m confirmModel) viewEdit() string {
 	var b strings.Builder
 
 	b.WriteByte('\n')
-	writeLine(&b, TitleBoldStyle.Foreground(ColorPrimary).Render(title))
-	b.WriteString(hintStyle.Render("  " + Truncate(Oneline(m.command), maxQueryPreview)))
-	b.WriteString("\n\n")
-	b.WriteString("  ")
-	b.WriteString(m.textInput.View())
-	b.WriteString("\n\n")
-	b.WriteString(renderHelp(m.help, keys, m.width))
+	writeLine(&b, TitleBoldStyle.Foreground(ColorPrimary).Render("Edit command"))
+	writeLine(&b, TruncateLines(hintStyle.Render("  "+Truncate(Oneline(m.command), maxQueryPreview)), m.width))
+
+	b.WriteByte('\n')
+	writeLine(&b, "  "+m.textInput.View())
+
+	b.WriteByte('\n')
+	b.WriteString(renderHelp(m.help, m.editKeys, m.width))
 
 	return b.String()
 }
 
-func ConfirmExecutionInteractive(suggestion Suggestion) ConfirmResult {
+func (m confirmModel) viewRefine() string {
+	var b strings.Builder
+
+	b.WriteByte('\n')
+	writeLine(&b, TitleBoldStyle.Foreground(ColorPrimary).Render("Refine your request"))
+	b.WriteString(refineContext{
+		Query:       m.originalQuery,
+		Refinements: m.refinements,
+		Commands:    []string{m.command},
+	}.render(m.width, m.height))
+
+	b.WriteByte('\n')
+	writeLine(&b, TruncateLines(infoStyle.Render("  Add to your request (or press Enter to retry):"), m.width))
+	writeLine(&b, "  "+m.textInput.View())
+
+	b.WriteByte('\n')
+	b.WriteString(renderHelp(m.help, m.refineKeys, m.width))
+
+	return b.String()
+}
+
+func ConfirmExecutionInteractive(suggestion Suggestion, originalQuery string, refinements []string) ConfirmResult {
 	if !IsInteractive() {
 		return ConfirmResult{Choice: ConfirmCancel, Command: suggestion.Command}
 	}
 
-	finalModel, err := tea.NewProgram(newConfirmModel(suggestion)).Run()
+	model := newConfirmModel(suggestion).withRefineContext(originalQuery, refinements)
+
+	finalModel, err := tea.NewProgram(model).Run()
 	if err != nil {
 		return ConfirmResult{Choice: ConfirmCancel, Command: suggestion.Command}
 	}
