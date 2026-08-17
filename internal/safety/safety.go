@@ -22,6 +22,14 @@ const (
 	anyFlag       = `(--[a-z-]+|--|-[a-z]+)`
 	destructiveRm = `(--recursive|--force|--no-preserve-root|-[a-z]*[rf][a-z]*)`
 	recursiveFlag = `(--recursive|-[a-z]*r[a-z]*)`
+	// Operands before the destructive one: the target is rarely the last
+	// argument, e.g. `rm -rf $HOME /tmp/cache`.
+	anyOperand = `(\S+\s+)*`
+	// A destructive target only counts as a whole argument, so /tmp/cache is
+	// not read as /.
+	operandEnd = `(\s|$)`
+	// sudo and doas with their own options, e.g. `... | sudo -u root bash`.
+	privPrefix = `((sudo|doas)\s+(-[a-z-]+\s+(\S+\s+)?)*)?`
 
 	// Windows drive roots and profile directories, optionally quoted and with a
 	// trailing separator or wildcard.
@@ -35,23 +43,23 @@ const (
 )
 
 var blockedPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`\brm\s+(` + anyFlag + `\s+)*` + destructiveRm + `\s+(` + anyFlag + `\s+)*` + rootOrHome + `\s*$`),
+	regexp.MustCompile(`\brm\s+(` + anyFlag + `\s+)*` + destructiveRm + `\s+` + anyOperand + rootOrHome + operandEnd),
 	regexp.MustCompile(`\brm\s+.*--no-preserve-root`),
 	regexp.MustCompile(`:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:`),
 	regexp.MustCompile(`\bdd\s+.*\bof\s*=\s*` + blockDevice),
 	regexp.MustCompile(`>\s*` + blockDevice),
 	regexp.MustCompile(`\bmkfs[a-z0-9.]*\s+.*` + blockDevice),
 	regexp.MustCompile(`\b(wipefs|shred)\s+.*` + blockDevice),
-	regexp.MustCompile(`\b(chmod|chown)\s+(\S+\s+)*` + recursiveFlag + `\s+(\S+\s+)*` + rootOrHome + `\s*$`),
+	regexp.MustCompile(`\b(chmod|chown)\s+(\S+\s+)*` + recursiveFlag + `\s+` + anyOperand + rootOrHome + operandEnd),
 	regexp.MustCompile(`\bmv\s+/\s+`),
 	regexp.MustCompile(`\bmv\s+~/?\s+/dev/null`),
-	regexp.MustCompile(`\b(curl|wget)\s.*\|\s*(sudo\s+)?(ba|z|k|da)?sh\b`),
+	regexp.MustCompile(`\b(curl|wget)\s.*\|\s*` + privPrefix + `(ba|z|k|da)?sh\b`),
 	regexp.MustCompile(`\b(ba|z)?sh\s+<\(\s*(curl|wget)`),
 	regexp.MustCompile(`\b(ba|z)?sh\s+-c\s+["']?\$\(\s*(curl|wget)`),
-	regexp.MustCompile(`\becho\s+.*\|\s*base64\s+-d\s*\|\s*(ba)?sh`),
+	regexp.MustCompile(`\becho\s+.*\|\s*base64\s+-d\s*\|\s*` + privPrefix + `(ba)?sh`),
 	regexp.MustCompile(`\bperl\s+-e\s*['"].*exec`),
 	regexp.MustCompile(`\bpython[23]?\s+-c\s*['"].*exec`),
-	regexp.MustCompile(`\b` + windowsDelete + `\s+(` + windowsFlag + `\s+)*` + forcedDelete + `\s+(` + windowsFlag + `\s+)*` + windowsRoot + `\s*$`),
+	regexp.MustCompile(`\b` + windowsDelete + `\s+(` + windowsFlag + `\s+)*` + forcedDelete + `\s+` + anyOperand + windowsRoot + operandEnd),
 	regexp.MustCompile(`\b` + windowsDelete + `\s+(` + windowsFlag + `\s+)*` + windowsRoot + `\s+(` + windowsFlag + `\s+)*` + forcedDelete + `\b`),
 	regexp.MustCompile(`^format\s+["']?[a-z]:`),
 	regexp.MustCompile(`\b(format-volume|clear-disk|initialize-disk|diskpart)\b`),

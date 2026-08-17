@@ -104,6 +104,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rm -rf /*`, `rm -rf $HOME`, chained commands, `dd` to block devices or
   `curl … | sudo bash`. Unfiltered `find / -delete` is blocked; filtered finds
   stay at caution level.
+- A destructive target is now caught anywhere in the argument list, not only as
+  the last one, so `rm -rf $HOME /tmp/cache` and `chmod -R 777 / /home` are
+  blocked. Paths that merely start with the same characters, such as
+  `rm -rf /tmp/cache`, are still allowed.
+- Pipes into a privileged shell are recognised when `sudo`/`doas` carry their own
+  options, e.g. `curl … | sudo -u root bash`.
 - Short API keys are fully masked in `shelp config show` instead of revealing
   most of the key.
 - `Truncate` is rune- and ANSI-aware, so multibyte commands are no longer cut
