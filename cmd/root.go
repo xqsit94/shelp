@@ -147,7 +147,7 @@ func runQuery(cmd *cobra.Command, query string, opts runOptions) (err error) {
 			return err
 		}
 
-		regenerate, refinement, err := runSuggestions(cmd, suggestions, query, shell, opts, &outcome)
+		regenerate, refinement, err := runSuggestions(cmd, suggestions, request, opts, &outcome)
 		if err != nil || !regenerate {
 			return err
 		}
@@ -158,7 +158,7 @@ func runQuery(cmd *cobra.Command, query string, opts runOptions) (err error) {
 
 // runSuggestions prints or runs one round of suggestions and reports what
 // happened in outcome. It returns true when the user asked for another round.
-func runSuggestions(cmd *cobra.Command, suggestions []ai.Suggestion, query, shell string, opts runOptions, outcome *runOutcome) (bool, string, error) {
+func runSuggestions(cmd *cobra.Command, suggestions []ai.Suggestion, request ai.Request, opts runOptions, outcome *runOutcome) (bool, string, error) {
 	ctx := cmd.Context()
 
 	// Without a terminal there is nobody to answer the confirmation prompt, so
@@ -170,10 +170,10 @@ func runSuggestions(cmd *cobra.Command, suggestions []ai.Suggestion, query, shel
 		outcome.commands = commandsOf(suggestions)
 		return false, "", printCommands(cmd, suggestions, opts.copy)
 	case opts.yes:
-		return false, "", executeWithoutConfirmation(ctx, suggestions, shell, outcome)
+		return false, "", executeWithoutConfirmation(ctx, suggestions, request.Shell, outcome)
 	}
 
-	result := prompt.SelectCommands(promptSuggestions(suggestions), query)
+	result := prompt.SelectCommands(promptSuggestions(suggestions), request.Query, refinementsOf(request.History))
 
 	switch {
 	case result.Cancelled:
@@ -187,7 +187,20 @@ func runSuggestions(cmd *cobra.Command, suggestions []ai.Suggestion, query, shel
 	outcome.commands = result.SelectedCommands
 	outcome.executed = len(result.SelectedCommands) > 0
 
-	return false, "", executeSelectedCommands(ctx, result.SelectedCommands, shell, false)
+	return false, "", executeSelectedCommands(ctx, result.SelectedCommands, request.Shell, false)
+}
+
+// refinementsOf lists what the user has already added to the original query, so
+// the next refinement is typed with the earlier ones in view.
+func refinementsOf(history []ai.Turn) []string {
+	refinements := make([]string, 0, len(history))
+	for _, turn := range history {
+		if turn.Feedback != "" {
+			refinements = append(refinements, turn.Feedback)
+		}
+	}
+
+	return refinements
 }
 
 func remediationHint(err error) string {

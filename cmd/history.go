@@ -142,7 +142,9 @@ func historyRunCmd() *cobra.Command {
 			var outcome runOutcome
 			defer func() { recordHistory(cmd, entry.Query, cfg.Profile, outcome, err) }()
 
-			regenerate, _, err := runSuggestions(cmd, suggestions, entry.Query, executor.DetectShell(), opts, &outcome)
+			request := ai.Request{Query: entry.Query, Shell: executor.DetectShell()}
+
+			regenerate, _, err := runSuggestions(cmd, suggestions, request, opts, &outcome)
 			if regenerate {
 				prompt.DisplayWarning("Regenerating is not available for history entries.")
 				err = &ExitError{Code: exitCancelled}
