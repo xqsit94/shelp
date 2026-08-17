@@ -165,7 +165,7 @@ func TestHistoryListsNewestFirst(t *testing.T) {
 	if !strings.HasPrefix(lines[3], "2 ") || !strings.Contains(lines[3], "2h ago") {
 		t.Errorf("line = %q, want the older entry numbered 2", lines[3])
 	}
-	if !strings.Contains(lines[4], "–") {
+	if !strings.Contains(lines[4], "(not run)") {
 		t.Errorf("line = %q, want the command marked as not executed", lines[4])
 	}
 }

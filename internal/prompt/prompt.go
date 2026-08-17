@@ -59,13 +59,32 @@ func DisplayCommandPlan(suggestions []Suggestion) {
 }
 
 func DisplayRunning(index, total int, command string) {
+	branch := TreeBranch
+	if index == total {
+		branch = TreeLastBranch
+	}
+
 	prefix := fmt.Sprintf("%s %s ",
-		TreeStyle.Render(TreeBranch),
+		TreeStyle.Render(branch),
 		hintStyle.Render(fmt.Sprintf("[%d/%d]", index, total)),
 	)
 
 	fmt.Println(IndentUnder(prefix, HighlightCommand(command)))
 	fmt.Println()
+}
+
+// DisplayStepResult reports how a command ended as soon as it ends. Without it
+// a failure is only visible in the closing summary, so a mid-run "continue?"
+// question arrives with no indication of what went wrong.
+func DisplayStepResult(exitCode int, interrupted bool, err error) {
+	switch {
+	case err != nil:
+		DisplayError("Failed to run: " + err.Error())
+	case interrupted:
+		DisplayWarning("Interrupted.")
+	case exitCode != 0:
+		DisplayError(fmt.Sprintf("Exited with code %d.", exitCode))
+	}
 }
 
 func DisplaySuccess(message string) {
@@ -80,4 +99,9 @@ func DisplayError(message string) {
 
 func DisplayWarning(message string) {
 	fmt.Fprintln(os.Stderr, warningStyle.Render("  "+IconWarning+" "+message))
+}
+
+// DisplayHint follows an error with the thing to try next.
+func DisplayHint(message string) {
+	fmt.Fprintln(os.Stderr, hintStyle.Render("    "+message))
 }
