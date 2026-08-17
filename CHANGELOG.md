@@ -110,6 +110,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rm -rf /tmp/cache`, are still allowed.
 - Pipes into a privileged shell are recognised when `sudo`/`doas` carry their own
   options, e.g. `curl … | sudo -u root bash`.
+- `--yes` no longer stops on an interactive "Continue with next command?"
+  question when a command fails: the run ends there, as it already did without a
+  terminal.
 - Short API keys are fully masked in `shelp config show` instead of revealing
   most of the key.
 - `Truncate` is rune- and ANSI-aware, so multibyte commands are no longer cut

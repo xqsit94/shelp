@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -243,6 +245,66 @@ func TestRootYesRefusesBlockedCommands(t *testing.T) {
 	if !errors.As(err, &exitErr) || exitErr.Code != 1 {
 		t.Fatalf("Execute() error = %v, want exit code 1", err)
 	}
+}
+
+func TestUnattendedRunStopsAfterFailureWithoutPrompting(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "second-ran")
+	commands := []string{"false", "touch " + marker}
+
+	var err error
+	_, stderr := captureStdio(t, func() {
+		err = executeSelectedCommands(t.Context(), commands, "sh", true)
+	})
+
+	var exitErr *ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 1 {
+		t.Fatalf("executeSelectedCommands() error = %v, want exit code 1", err)
+	}
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Error("the second command ran after the first one failed")
+	}
+	if !strings.Contains(stderr, "Stopping") {
+		t.Errorf("stderr = %q, want the unattended stop notice", stderr)
+	}
+}
+
+// captureStdio swaps the process streams that the execution summary and the
+// warnings write to directly, rather than through the cobra command.
+func captureStdio(t *testing.T, fn func()) (string, string) {
+	t.Helper()
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "stdout")
+	errPath := filepath.Join(dir, "stderr")
+
+	outFile, err := os.Create(outPath)
+	if err != nil {
+		t.Fatalf("os.Create() returned error: %v", err)
+	}
+	defer outFile.Close()
+
+	errFile, err := os.Create(errPath)
+	if err != nil {
+		t.Fatalf("os.Create() returned error: %v", err)
+	}
+	defer errFile.Close()
+
+	origOut, origErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = outFile, errFile
+	defer func() { os.Stdout, os.Stderr = origOut, origErr }()
+
+	fn()
+
+	stdout, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("os.ReadFile() returned error: %v", err)
+	}
+	stderr, err := os.ReadFile(errPath)
+	if err != nil {
+		t.Fatalf("os.ReadFile() returned error: %v", err)
+	}
+
+	return string(stdout), string(stderr)
 }
 
 func TestRootPrintWinsOverYes(t *testing.T) {

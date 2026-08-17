@@ -187,7 +187,7 @@ func runSuggestions(cmd *cobra.Command, suggestions []ai.Suggestion, query, shel
 	outcome.commands = result.SelectedCommands
 	outcome.executed = len(result.SelectedCommands) > 0
 
-	return false, "", executeSelectedCommands(ctx, result.SelectedCommands, shell)
+	return false, "", executeSelectedCommands(ctx, result.SelectedCommands, shell, false)
 }
 
 func generateCommands(ctx context.Context, client *ai.Client, request ai.Request) ([]ai.Suggestion, error) {
@@ -279,7 +279,7 @@ func executeWithoutConfirmation(ctx context.Context, suggestions []ai.Suggestion
 	outcome.commands = allowed
 	outcome.executed = true
 
-	return executeSelectedCommands(ctx, allowed, shell)
+	return executeSelectedCommands(ctx, allowed, shell, true)
 }
 
 func cancelled(err error) bool {
@@ -359,7 +359,10 @@ type commandResult struct {
 	execErr     error
 }
 
-func executeSelectedCommands(ctx context.Context, commands []string, shell string) error {
+// executeSelectedCommands runs the commands in order. When unattended (--yes)
+// a failure stops the run instead of asking whether to carry on, so the whole
+// invocation stays free of prompts.
+func executeSelectedCommands(ctx context.Context, commands []string, shell string, unattended bool) error {
 	if len(commands) == 0 {
 		prompt.DisplayWarning("No commands selected.")
 		return nil
@@ -390,8 +393,14 @@ func executeSelectedCommands(ctx context.Context, commands []string, shell strin
 		}
 
 		failed := result.execErr != nil || result.exitCode != 0
-		if failed && i < total-1 && !prompt.ConfirmYesNoInteractive("Continue with next command?") {
-			break
+		if failed && i < total-1 {
+			if unattended {
+				prompt.DisplayWarning("Stopping: the previous command failed.")
+				break
+			}
+			if !prompt.ConfirmYesNoInteractive("Continue with next command?") {
+				break
+			}
 		}
 	}
 

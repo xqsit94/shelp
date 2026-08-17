@@ -155,7 +155,7 @@ a summary tree is printed at the end.
 | Flag | Description |
 | --- | --- |
 | `-p`, `--print` | Print the generated commands to stdout, one per line, and exit. Nothing runs. |
-| `-y`, `--yes` | Skip the confirmation UI and run the commands (blocked ones are skipped). |
+| `-y`, `--yes` | Skip the confirmation UI and run the commands (blocked ones are skipped). Never prompts: if a command fails, the rest are skipped. |
 | `-c`, `--copy` | Like `--print`, and copy the commands (newline-joined) to the clipboard. |
 | `--profile <name>` | Use a named provider profile (see [Profiles](#profiles)). |
 | `--no-history` | Do not record the query in the history. |
