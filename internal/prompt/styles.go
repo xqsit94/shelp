@@ -93,8 +93,7 @@ var (
 	checkboxBlockedStyle = lipgloss.NewStyle().
 				Foreground(colorDanger)
 
-	// Help/Hint styles. The key itself is brighter than its description so the
-	// binding stays readable when the hints are dimmed.
+	// Help/Hint styles
 	helpStyle = lipgloss.NewStyle().
 			Foreground(colorTextMuted)
 

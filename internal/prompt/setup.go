@@ -174,7 +174,9 @@ func (m setupModel) View() string {
 	)
 
 	headerBox := welcomeBoxStyle.Render(header)
-	b.WriteString("\n" + headerBox + "\n\n")
+	b.WriteByte('\n')
+	writeLine(&b, headerBox)
+	b.WriteByte('\n')
 
 	for i, input := range m.inputs {
 		lblStyle := hintStyle
@@ -182,18 +184,19 @@ func (m setupModel) View() string {
 			lblStyle = infoStyle.Bold(true)
 		}
 
-		b.WriteString("  " + lblStyle.Render(m.labels[i]+":") + "\n")
+		b.WriteString("  ")
+		writeLine(&b, lblStyle.Render(m.labels[i]+":"))
 
 		inputBox := inputStyle
 		if i == m.focusIndex {
 			inputBox = inputFocusedStyle
 		}
-		// A bordered box is three lines: concatenating a prefix would indent
-		// only the first one and leave the box visibly skewed.
-		b.WriteString(indentBlock(inputBox.Render(input.View()), 2) + "\n\n")
+		writeLine(&b, indentBlock(inputBox.Render(input.View()), 2))
+		b.WriteByte('\n')
 	}
 
-	b.WriteString("\n" + renderHelp(m.help, m.keys, m.width))
+	b.WriteByte('\n')
+	b.WriteString(renderHelp(m.help, m.keys, m.width))
 
 	return b.String()
 }

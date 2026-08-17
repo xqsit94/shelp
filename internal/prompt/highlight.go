@@ -40,8 +40,7 @@ func newChromaStyle() *chroma.Style {
 	return styles.Get("github")
 }
 
-// HighlightFor highlights only when w is a terminal, so that a redirected
-// `shelp config test > log` carries no escape sequences.
+// HighlightFor highlights only when w is a terminal, so redirected output stays plain.
 func HighlightFor(w io.Writer, command string) string {
 	if !IsTerminalWriter(w) {
 		return command

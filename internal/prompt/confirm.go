@@ -268,10 +268,13 @@ func (m confirmModel) View() string {
 func (m confirmModel) viewInput(title string, keys inputKeyMap) string {
 	var b strings.Builder
 
-	b.WriteString("\n" + TitleBoldStyle.Foreground(ColorPrimary).Render(title) + "\n")
+	b.WriteByte('\n')
+	writeLine(&b, TitleBoldStyle.Foreground(ColorPrimary).Render(title))
 	b.WriteString(hintStyle.Render("  " + Truncate(Oneline(m.command), maxQueryPreview)))
 	b.WriteString("\n\n")
-	b.WriteString("  " + m.textInput.View() + "\n\n")
+	b.WriteString("  ")
+	b.WriteString(m.textInput.View())
+	b.WriteString("\n\n")
 	b.WriteString(renderHelp(m.help, keys, m.width))
 
 	return b.String()

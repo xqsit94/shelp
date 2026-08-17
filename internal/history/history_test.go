@@ -1,9 +1,9 @@
 package history
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -122,7 +122,7 @@ func TestAppendTrimsToNewestEntries(t *testing.T) {
 
 	var builder strings.Builder
 	for i := 0; i < maxEntries+5; i++ {
-		builder.WriteString(`{"query":"q` + strconv.Itoa(i) + `"}` + "\n")
+		fmt.Fprintf(&builder, "{\"query\":\"q%d\"}\n", i)
 	}
 	writeHistory(t, builder.String())
 

@@ -190,8 +190,6 @@ func runSuggestions(cmd *cobra.Command, suggestions []ai.Suggestion, query, shel
 	return false, "", executeSelectedCommands(ctx, result.SelectedCommands, shell, false)
 }
 
-// remediationHint turns the provider's rejection into the command that fixes
-// it, because the status code alone rarely tells the user what to do next.
 func remediationHint(err error) string {
 	message := err.Error()
 

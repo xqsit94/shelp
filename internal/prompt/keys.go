@@ -5,21 +5,15 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 )
 
-// Key hints line up with the rest of the screen content.
 const helpIndent = 2
 
-// renderHelp renders the key hints indented and clipped to the terminal.
-//
-// bubbles/help elides bindings on its own, but it gives up as soon as the width
-// it has already used leaves no room for its ellipsis, and then emits every
-// remaining binding: at 40 columns that is an 81 column line. The result is
-// truncated here rather than trusted.
+// renderHelp clips the hints itself: bubbles/help stops eliding as soon as the
+// width it has used leaves no room for its ellipsis, and then emits every
+// remaining binding, which at 40 columns is an 81 column line.
 func renderHelp(h help.Model, k help.KeyMap, width int) string {
 	return indentBlock(TruncateLines(h.View(k), width-helpIndent), helpIndent)
 }
 
-// newHelpModel builds the help component every screen shares, so the hints
-// look the same everywhere and each one knows the width it has to fit into.
 func newHelpModel(width int) help.Model {
 	h := help.New()
 	h.Width = width
@@ -34,14 +28,6 @@ func newHelpModel(width int) help.Model {
 	}
 	return h
 }
-
-// Every screen declares its bindings here so that the help line is generated
-// from the same source the Update methods match against, and can never drift
-// from what the keys actually do.
-//
-// bubbles/help drops bindings from the tail of ShortHelp when the terminal is
-// too narrow, so each ShortHelp starts with the bindings a user cannot finish
-// the screen without. At 60 columns that is what survives.
 
 type listKeyMap struct {
 	Execute    key.Binding
@@ -71,6 +57,8 @@ func defaultListKeyMap() listKeyMap {
 	}
 }
 
+// help elides from the tail when the terminal is too narrow, so the bindings a
+// screen cannot be finished without come first.
 func (k listKeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{k.Execute, k.Quit, k.Up, k.Down, k.Toggle, k.Edit, k.Regenerate, k.Help}
 }
@@ -106,8 +94,7 @@ func defaultConfirmKeyMap() confirmKeyMap {
 	}
 }
 
-// A blocked command cannot be run, so the y shortcut is withheld rather than
-// offered and refused.
+// A blocked command cannot be run, so y is withheld rather than offered and refused.
 func (k confirmKeyMap) shortHelpFor(blocked bool) []key.Binding {
 	if blocked {
 		return []key.Binding{k.Select, k.Quit, k.Up, k.Down, k.Edit, k.Regenerate}

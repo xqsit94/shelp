@@ -10,10 +10,14 @@ func Truncate(s string, max int) string {
 	return ansi.Truncate(s, max, "…")
 }
 
-// TruncateLines truncates every line of s, so that a block that was indented
-// under a tree prefix stays inside the terminal on all of its lines. Without
-// it the terminal clips the overflow silently and the command that is about to
-// run is shown as a prefix of itself.
+// writeLine appends s and a line break without building the joined string.
+func writeLine(b *strings.Builder, s string) {
+	b.WriteString(s)
+	b.WriteByte('\n')
+}
+
+// TruncateLines truncates every line of s. The renderer clips overflow
+// silently, which would show the command about to run as a prefix of itself.
 func TruncateLines(s string, max int) string {
 	if max <= 0 {
 		return s
@@ -48,8 +52,8 @@ func IndentUnder(prefix, body string) string {
 	return prefix + IndentLines(body, ansi.StringWidth(prefix))
 }
 
-// indentBlock indents every line of s, which is what a multi-line block such as
-// a bordered box needs. Prefixing the string instead moves only its first line.
+// indentBlock indents every line of s. Prefixing the string instead would move
+// only the first line of a bordered box.
 func indentBlock(s string, indent int) string {
 	if indent <= 0 {
 		return s

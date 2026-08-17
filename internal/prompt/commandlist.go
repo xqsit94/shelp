@@ -25,21 +25,16 @@ type CommandItem struct {
 	Selected    bool
 }
 
-// Long queries and commands are shortened before they are used as a heading.
 const maxQueryPreview = 60
 
-// Each command occupies a command row and a risk row, and the rest of the view
-// (title, counter, hints, scroll markers) is chrome that the list has to leave
-// room for.
 const (
 	rowsPerCommand = 2
 	listChromeRows = 8
 	minVisibleRows = 1
 )
 
-// visibleRange picks the window of commands to draw so that the cursor is
-// always on screen. Scroll position is derived from the cursor rather than
-// stored, so it cannot drift out of sync with it.
+// visibleRange derives the window to draw from the cursor rather than storing
+// a scroll offset, so the two cannot drift apart.
 func visibleRange(count, cursor, availableRows int) (start, end int) {
 	if availableRows <= 0 || count*rowsPerCommand <= availableRows {
 		return 0, count
@@ -115,8 +110,6 @@ func (m commandListModel) Init() tea.Cmd {
 	return nil
 }
 
-// setSize keeps every component that needs to know the terminal width in sync,
-// so a resize reflows instead of leaving stale truncation behind.
 func (m commandListModel) setSize(width, height int) commandListModel {
 	m.width = width
 	m.height = height
@@ -258,13 +251,14 @@ func (m commandListModel) View() string {
 	title := fmt.Sprintf("Generated Commands (%d)", len(m.commands))
 	cmdTitleStyle := TitleBoldStyle.Foreground(ColorInfo)
 
-	b.WriteString("\n" + cmdTitleStyle.Render(title) + "\n")
+	b.WriteByte('\n')
+	writeLine(&b, cmdTitleStyle.Render(title))
 
 	width := m.width
 
 	start, end := visibleRange(len(m.commands), m.cursor, m.height-listChromeRows)
 	if start > 0 {
-		b.WriteString(hintStyle.Render(fmt.Sprintf("  ↑ %d more", start)) + "\n")
+		writeLine(&b, hintStyle.Render(fmt.Sprintf("  ↑ %d more", start)))
 	}
 
 	for i, item := range m.commands[start:end] {
@@ -282,7 +276,7 @@ func (m commandListModel) View() string {
 			connectorStyle = treeConnectorActiveStyle
 		}
 
-		// The caret is what makes the focused row identifiable without colour.
+		// The caret is what identifies the focused row without colour.
 		gutter := "  "
 		if isActive {
 			gutter = cursorStyle.Render("❯ ")
@@ -298,7 +292,7 @@ func (m commandListModel) View() string {
 
 		prefix := fmt.Sprintf("%s%s %s ", gutter, connectorStyle.Render(branch), checkbox)
 		commandLine := IndentUnder(prefix, HighlightCommand(item.Command))
-		b.WriteString(TruncateLines(commandLine, width) + "\n")
+		writeLine(&b, TruncateLines(commandLine, width))
 
 		verticalLine := TreeVertical
 		if isLast {
@@ -321,11 +315,11 @@ func (m commandListModel) View() string {
 		if item.Explanation != "" {
 			riskLine += ExplanationStyle.Render(" — " + item.Explanation)
 		}
-		b.WriteString(Truncate(riskLine, width) + "\n")
+		writeLine(&b, Truncate(riskLine, width))
 	}
 
 	if end < len(m.commands) {
-		b.WriteString(hintStyle.Render(fmt.Sprintf("  ↓ %d more", len(m.commands)-end)) + "\n")
+		writeLine(&b, hintStyle.Render(fmt.Sprintf("  ↓ %d more", len(m.commands)-end)))
 	}
 
 	b.WriteString("\n")
@@ -354,7 +348,8 @@ func (m commandListModel) viewRegenerateMode() string {
 
 	regenTitleStyle := TitleBoldStyle.Foreground(ColorPrimary)
 
-	b.WriteString("\n" + regenTitleStyle.Render("Refine your request") + "\n")
+	b.WriteByte('\n')
+	writeLine(&b, regenTitleStyle.Render("Refine your request"))
 
 	queryPreview := Truncate(m.originalQuery, maxQueryPreview)
 
@@ -362,7 +357,9 @@ func (m commandListModel) viewRegenerateMode() string {
 	b.WriteString("\n\n")
 
 	b.WriteString(infoStyle.Render("  Add to your request (or press Enter to retry):"))
-	b.WriteString("\n  " + m.textInput.View() + "\n\n")
+	b.WriteString("\n  ")
+	b.WriteString(m.textInput.View())
+	b.WriteString("\n\n")
 
 	b.WriteString(m.helpView(m.refineKeys))
 
@@ -372,10 +369,13 @@ func (m commandListModel) viewRegenerateMode() string {
 func (m commandListModel) viewEditMode() string {
 	var b strings.Builder
 
-	b.WriteString("\n" + TitleBoldStyle.Foreground(ColorPrimary).Render("Edit command") + "\n")
+	b.WriteByte('\n')
+	writeLine(&b, TitleBoldStyle.Foreground(ColorPrimary).Render("Edit command"))
 	b.WriteString(hintStyle.Render(fmt.Sprintf("  %d of %d", m.cursor+1, len(m.commands))))
 	b.WriteString("\n\n")
-	b.WriteString("  " + m.textInput.View() + "\n\n")
+	b.WriteString("  ")
+	b.WriteString(m.textInput.View())
+	b.WriteString("\n\n")
 	b.WriteString(m.helpView(m.editKeys))
 
 	return b.String()

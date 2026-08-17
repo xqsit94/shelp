@@ -166,8 +166,6 @@ func TestCommandListViewShowsExplanation(t *testing.T) {
 	}
 }
 
-// The focused row has to be identifiable from the text alone: under NO_COLOR
-// a colour-only cursor leaves the two views byte-identical.
 func TestCommandListFocusIsVisibleWithoutColour(t *testing.T) {
 	m := newCommandListModel([]Suggestion{
 		{Command: "echo one"},
@@ -187,8 +185,6 @@ func TestCommandListFocusIsVisibleWithoutColour(t *testing.T) {
 	}
 }
 
-// A command longer than the terminal must never be shown as a silent prefix of
-// itself: the user is approving exactly this text.
 func TestCommandListTruncatesLongCommandsWithEllipsis(t *testing.T) {
 	long := "find /var/log -type f -name '*.log' " + strings.Repeat("-o -name '*.gz' ", 20)
 	m := newCommandListModel([]Suggestion{{Command: long}}, "find logs")
@@ -196,7 +192,7 @@ func TestCommandListTruncatesLongCommandsWithEllipsis(t *testing.T) {
 	width := GetTerminalWidth()
 
 	var commandRow string
-	for _, line := range strings.Split(m.View(), "\n") {
+	for line := range strings.SplitSeq(m.View(), "\n") {
 		if strings.Contains(line, "find /var/log") {
 			commandRow = line
 			break
@@ -214,8 +210,6 @@ func TestCommandListTruncatesLongCommandsWithEllipsis(t *testing.T) {
 	}
 }
 
-// The bindings a user cannot finish the screen without have to survive the
-// narrowest terminal we support.
 func TestCommandListHelpKeepsEssentialKeysAtEveryWidth(t *testing.T) {
 	m := newCommandListModel([]Suggestion{
 		{Command: "echo one"},
@@ -237,8 +231,6 @@ func TestCommandListHelpKeepsEssentialKeysAtEveryWidth(t *testing.T) {
 	}
 }
 
-// Every view has to stay inside the terminal at any width: the renderer clips
-// silently, so an overflowing line is invisible rather than obviously wrong.
 func TestViewsFitEveryWidth(t *testing.T) {
 	suggestions := []Suggestion{
 		{Command: "docker compose up -d --force-recreate --remove-orphans", Explanation: strings.Repeat("long ", 30)},
@@ -290,8 +282,6 @@ func TestVisibleRange(t *testing.T) {
 	}
 }
 
-// A list taller than the terminal used to push its own title and first items
-// off the screen for good.
 func TestCommandListScrollsInsteadOfOverflowing(t *testing.T) {
 	suggestions := make([]Suggestion, 30)
 	for i := range suggestions {
@@ -329,7 +319,7 @@ func TestCommandListViewFitsTerminalWidth(t *testing.T) {
 	width := GetTerminalWidth()
 
 	rows := 0
-	for _, line := range strings.Split(m.View(), "\n") {
+	for line := range strings.SplitSeq(m.View(), "\n") {
 		if !strings.Contains(line, "very long explanation") {
 			continue
 		}
