@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Long command lists now scroll instead of overflowing the terminal: only the
+  window that fits is drawn, with `↑ N more` / `↓ N more` markers, and the
+  focused command is always kept on screen.
+- `?` toggles a full list of key bindings in the command list.
+- Provider errors now suggest the command that fixes them (wrong key, wrong
+  endpoint, rate limit, unreachable host).
 - Shell integration: `shelp init zsh|bash|fish|powershell` prints a snippet that
   binds `ctrl+g` to a widget which sends the current command line to shelp and
   replaces it with the generated commands (joined with ` && `, or `; ` in
@@ -80,6 +86,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Key hints are generated from the bindings themselves with `bubbles/help`
+  instead of four hardcoded strings, so they adapt to the terminal width and
+  cannot drift from what the keys actually do. Every screen sizes itself from
+  `tea.WindowSizeMsg`, so resizing reflows the view.
+- Selection checkboxes are `[✓]`/`[ ]`; `[●]` collided with the `●` used for
+  the safe risk level on the line below.
+- `shelp history` prints `(not run)` instead of an undocumented dash, and
+  `shelp config profile list` names the profile in use rather than reporting
+  none while `config show` reports `default`.
+
 - GitHub Actions bumped to versions that run on Node 24 (`actions/checkout@v5`,
   `actions/setup-go@v6`, `actions/upload-artifact@v6`,
   `actions/download-artifact@v7`, `softprops/action-gh-release@v3`), and CI now
@@ -97,6 +113,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Version is injected at build time via ldflags instead of being hard-coded.
 
 ### Fixed
+
+- The focused row in the command list is marked with a caret. It was previously
+  distinguished only by the colour of its tree branch, so under `NO_COLOR` the
+  view was identical before and after moving the cursor and there was no way to
+  tell which command `space` or `e` would act on.
+- Commands longer than the terminal are truncated with an ellipsis. They were
+  the one thing clipped at the screen edge without a marker, while the
+  explanation below them was truncated properly, so the text being approved
+  could differ from the text that ran.
+- Key hints no longer clip mid-word. At 80 columns `enter: execute` and
+  `q: quit` were cut off entirely, leaving no on-screen way to run or quit.
+- The first-run wizard no longer draws skewed input boxes: a prefix was
+  concatenated onto a three-line bordered box and indented only its first line.
+- The edit and refine screens no longer scatter their input across the screen.
+  A newline inside a `lipgloss.Render` call pads the block and pushes the next
+  write across by the width of the line above it.
+- `shelp config test` no longer writes ANSI escapes into redirected output and
+  now honours `NO_COLOR`, which the syntax highlighter ignored.
+- A failing command reports its exit code as it happens, instead of asking
+  whether to continue with no indication that anything went wrong.
 
 - `install.sh` downloads the released `.tar.gz` and verifies its SHA-256
   checksum instead of fetching a raw binary URL that returned 404.
