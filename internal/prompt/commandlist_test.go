@@ -165,6 +165,54 @@ func TestCommandListViewShowsExplanation(t *testing.T) {
 	}
 }
 
+// The focused row has to be identifiable from the text alone: under NO_COLOR
+// a colour-only cursor leaves the two views byte-identical.
+func TestCommandListFocusIsVisibleWithoutColour(t *testing.T) {
+	m := newCommandListModel([]Suggestion{
+		{Command: "echo one"},
+		{Command: "echo two"},
+	}, "echo things")
+
+	first := ansi.Strip(m.View())
+
+	moved, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	second := ansi.Strip(moved.(commandListModel).View())
+
+	if first == second {
+		t.Errorf("moving the cursor did not change the plain-text view:\n%s", first)
+	}
+	if !strings.Contains(first, "❯ ") {
+		t.Errorf("view has no cursor marker:\n%s", first)
+	}
+}
+
+// A command longer than the terminal must never be shown as a silent prefix of
+// itself: the user is approving exactly this text.
+func TestCommandListTruncatesLongCommandsWithEllipsis(t *testing.T) {
+	long := "find /var/log -type f -name '*.log' " + strings.Repeat("-o -name '*.gz' ", 20)
+	m := newCommandListModel([]Suggestion{{Command: long}}, "find logs")
+
+	width := GetTerminalWidth()
+
+	var commandRow string
+	for _, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(line, "find /var/log") {
+			commandRow = line
+			break
+		}
+	}
+
+	if commandRow == "" {
+		t.Fatalf("command row not found in view:\n%s", m.View())
+	}
+	if got := ansi.StringWidth(commandRow); got > width {
+		t.Errorf("command row width = %d, want at most %d", got, width)
+	}
+	if !strings.HasSuffix(ansi.Strip(commandRow), "…") {
+		t.Errorf("truncated command row does not end in an ellipsis: %q", ansi.Strip(commandRow))
+	}
+}
+
 func TestCommandListViewFitsTerminalWidth(t *testing.T) {
 	m := newCommandListModel([]Suggestion{
 		{Command: "ls", Explanation: strings.Repeat("very long explanation ", 20)},

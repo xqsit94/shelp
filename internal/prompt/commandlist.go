@@ -199,6 +199,8 @@ func (m commandListModel) View() string {
 
 	b.WriteString("\n" + cmdTitleStyle.Render(title) + "\n")
 
+	width := GetTerminalWidth()
+
 	for i, item := range m.commands {
 		isLast := i == len(m.commands)-1
 		isActive := m.cursor == i
@@ -213,16 +215,23 @@ func (m commandListModel) View() string {
 			connectorStyle = treeConnectorActiveStyle
 		}
 
-		checkbox := checkboxUncheckedStyle.Render("[○]")
+		// The caret is what makes the focused row identifiable without colour.
+		gutter := "  "
+		if isActive {
+			gutter = cursorStyle.Render("❯ ")
+		}
+
+		checkbox := checkboxUncheckedStyle.Render("[ ]")
 		if item.Selected {
-			checkbox = checkboxCheckedStyle.Render("[●]")
+			checkbox = checkboxCheckedStyle.Render("[✓]")
 		}
 		if safety.IsBlocked(item.Command) {
 			checkbox = checkboxBlockedStyle.Render("[⊘]")
 		}
 
-		prefix := fmt.Sprintf("%s %s ", connectorStyle.Render(branch), checkbox)
-		b.WriteString(IndentUnder(prefix, HighlightCommand(item.Command)) + "\n")
+		prefix := fmt.Sprintf("%s%s %s ", gutter, connectorStyle.Render(branch), checkbox)
+		commandLine := IndentUnder(prefix, HighlightCommand(item.Command))
+		b.WriteString(TruncateLines(commandLine, width) + "\n")
 
 		verticalLine := TreeVertical
 		if isLast {
@@ -237,7 +246,7 @@ func (m commandListModel) View() string {
 			riskText = riskStyle.Render(string(item.Risk) + " (blocked)")
 		}
 
-		riskLine := fmt.Sprintf("%s     %s %s",
+		riskLine := fmt.Sprintf("  %s     %s %s",
 			connectorStyle.Render(verticalLine),
 			riskEmoji,
 			riskText,
@@ -245,7 +254,7 @@ func (m commandListModel) View() string {
 		if item.Explanation != "" {
 			riskLine += ExplanationStyle.Render(" — " + item.Explanation)
 		}
-		b.WriteString(Truncate(riskLine, GetTerminalWidth()) + "\n")
+		b.WriteString(Truncate(riskLine, width) + "\n")
 	}
 
 	b.WriteString("\n")
